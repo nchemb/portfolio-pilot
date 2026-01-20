@@ -82,7 +82,7 @@ export function HoldingBreakdownRow({
         <TableCell>
           {holding.price != null ? formatCurrency(holding.price) : "--"}
         </TableCell>
-        <TableCell className="text-right">
+        <TableCell className="text-left">
           {formatCurrency(holding.totalValue)}
         </TableCell>
         <TableCell>{holding.securityType ?? "--"}</TableCell>
@@ -103,7 +103,7 @@ export function HoldingBreakdownRow({
                     <TableHead>Account</TableHead>
                     <TableHead>Quantity</TableHead>
                     <TableHead>Price</TableHead>
-                    <TableHead className="text-right">Value</TableHead>
+                      <TableHead className="text-left">Value</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -120,7 +120,7 @@ export function HoldingBreakdownRow({
                           ? formatCurrency(entry.price)
                           : "--"}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-left">
                         {formatCurrency(entry.value)}
                       </TableCell>
                     </TableRow>

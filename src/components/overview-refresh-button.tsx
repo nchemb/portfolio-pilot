@@ -19,6 +19,7 @@ export function OverviewRefreshButton() {
     setMessage(null)
 
     try {
+      await fetch("/api/refresh-dashboard", { method: "POST" })
       router.refresh()
       setState("success")
       setMessage("Updated")

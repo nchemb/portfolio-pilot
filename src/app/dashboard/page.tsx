@@ -35,7 +35,14 @@ import { PlaidLinkButton } from "@/components/plaid-link-button"
 import { PlaidResyncButton } from "@/components/plaid-resync-button"
 import { OverviewRefreshButton } from "@/components/overview-refresh-button"
 import { HoldingBreakdownRow } from "@/components/holding-breakdown-row"
+import { RecommendedAllocationCard } from "@/components/recommended-allocation-card"
 import { aggregateHoldings } from "@/lib/holdings"
+import {
+  getRecommendedAllocation,
+  calculateAllocationVariance,
+  getRecommendationSummary,
+  type AssetAllocation,
+} from "@/lib/allocation-recommendations"
 
 export const dynamic = "force-dynamic"
 
@@ -66,11 +73,19 @@ function toNumber(value: unknown): number {
   return 0
 }
 
-function holdingMarketValue(holding: { value?: unknown; price?: unknown; quantity?: unknown }): number {
+function holdingMarketValue(holding: {
+  value?: unknown
+  price?: unknown
+  quantity?: unknown
+  securityType?: unknown
+  assetClass?: unknown
+}): number {
   const direct = toNumber(holding.value)
   const price = toNumber(holding.price)
   const qty = toNumber(holding.quantity)
   const derived = price * qty
+  const isCash =
+    holding.securityType === "cash" || holding.assetClass === "cash"
 
   const directOk = Number.isFinite(direct) && direct > 0
   const derivedOk = Number.isFinite(derived) && derived > 0
@@ -78,6 +93,10 @@ function holdingMarketValue(holding: { value?: unknown; price?: unknown; quantit
   // Prefer an explicit value when it looks sane, but if we can derive a value
   // from price * quantity and it materially differs (common for cash rows where
   // quantity is the balance and price is 1), prefer the derived value.
+  if (isCash && directOk) {
+    return direct
+  }
+
   if (derivedOk && (!directOk || Math.abs(derived - direct) > 0.01)) {
     return derived
   }
@@ -264,7 +283,32 @@ export default async function DashboardPage({
     const value = allocationBuckets[bucket]
     const pct = totalHoldingsValue > 0 ? value / totalHoldingsValue : 0
     return { bucket, value, pct }
+  }).sort((a, b) => b.value - a.value)
+
+  // Calculate recommended allocation based on user profile
+  const actualAllocation: AssetAllocation = {
+    us_equity: allocationBuckets.us_equity / (totalHoldingsValue || 1),
+    intl_equity: allocationBuckets.intl_equity / (totalHoldingsValue || 1),
+    bonds: allocationBuckets.bonds / (totalHoldingsValue || 1),
+    cash: allocationBuckets.cash / (totalHoldingsValue || 1),
+    other: allocationBuckets.other / (totalHoldingsValue || 1),
+  }
+
+  const recommendedAllocation = getRecommendedAllocation({
+    ageRange: profile?.ageRange,
+    riskTolerance: profile?.riskTolerance,
+    timeHorizon: profile?.timeHorizon,
   })
+
+  const allocationVariance = calculateAllocationVariance(
+    actualAllocation,
+    recommendedAllocation
+  )
+
+  const recommendationSummary = getRecommendationSummary(
+    profile ?? {},
+    recommendedAllocation
+  )
 
   const topHoldings = aggregatedHoldings.slice(0, 6)
   const allHoldings = aggregatedHoldings
@@ -352,7 +396,7 @@ export default async function DashboardPage({
                   </Card>
                 ) : null}
 
-                <div className="grid gap-4 md:grid-cols-3">
+                <div className="grid gap-4 md:grid-cols-2">
                   <Card>
                     <CardHeader>
                       <CardDescription>Total Value</CardDescription>
@@ -387,10 +431,15 @@ export default async function DashboardPage({
                   <Card>
                     <CardHeader>
                       <CardDescription>Daily Change</CardDescription>
-                      <CardTitle>
+                      <CardTitle className="flex flex-wrap items-baseline gap-x-2">
                         {latestSnapshot?.changeAbs != null
                           ? formatCurrency(toNumber(latestSnapshot.changeAbs))
                           : "--"}
+                        <span className="text-sm text-muted-foreground">
+                          {latestSnapshot?.changePct != null
+                            ? formatPct(toNumber(latestSnapshot.changePct))
+                            : "--"}
+                        </span>
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -405,33 +454,9 @@ export default async function DashboardPage({
                           {toNumber(latestSnapshot.changeAbs) >= 0
                             ? "Up"
                             : "Down"} {formatCurrency(Math.abs(toNumber(latestSnapshot.changeAbs)))}
-                        </p>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">--</p>
-                      )}
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader>
-                      <CardDescription>Change %</CardDescription>
-                      <CardTitle>
-                        {latestSnapshot?.changePct != null
-                          ? formatPct(toNumber(latestSnapshot.changePct))
-                          : "--"}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {latestSnapshot?.changePct != null ? (
-                        <p
-                          className={`text-sm ${
-                            toNumber(latestSnapshot.changePct) >= 0
-                              ? "text-emerald-600"
-                              : "text-rose-600"
-                          }`}
-                        >
-                          {toNumber(latestSnapshot.changePct) >= 0
-                            ? "Positive"
-                            : "Negative"} today
+                          {latestSnapshot?.changePct != null
+                            ? ` (${formatPct(Math.abs(toNumber(latestSnapshot.changePct)))})`
+                            : ""}
                         </p>
                       ) : (
                         <p className="text-sm text-muted-foreground">--</p>
@@ -445,7 +470,7 @@ export default async function DashboardPage({
                 <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
                   <Card>
                     <CardHeader>
-                      <CardTitle>Allocation breakdown</CardTitle>
+                      <CardTitle>Current allocation breakdown</CardTitle>
                       <CardDescription>
                         Based on your current holdings.
                       </CardDescription>
@@ -488,6 +513,16 @@ export default async function DashboardPage({
                     </CardContent>
                   </Card>
                 </div>
+
+                <RecommendedAllocationCard
+                  actualAllocation={actualAllocation}
+                  recommendedAllocation={recommendedAllocation}
+                  allocationVariance={allocationVariance}
+                  recommendationSummary={recommendationSummary}
+                  totalHoldingsValue={totalHoldingsValue}
+                  hasProfile={!!(profile?.ageRange || profile?.riskTolerance || profile?.timeHorizon)}
+                  ASSET_CLASS_LABELS={ASSET_CLASS_LABELS}
+                />
 
                 <Card>
                   <CardHeader>
@@ -552,7 +587,7 @@ export default async function DashboardPage({
                           <TableHead>Ticker / Name</TableHead>
                           <TableHead>Quantity</TableHead>
                           <TableHead>Price</TableHead>
-                          <TableHead className="text-right">Value</TableHead>
+                          <TableHead>Value</TableHead>
                           <TableHead>Security Type</TableHead>
                           <TableHead>Asset Class</TableHead>
                         </TableRow>

@@ -15,6 +15,7 @@ model User {
 
   profile   Profile?
   accounts  BrokerageAccount[]
+  plaidItems PlaidItem[]
 }
 
 model Profile {
@@ -39,14 +40,15 @@ model BrokerageAccount {
   type         String?  // brokerage|retirement etc
   currency     String?
   lastSyncedAt DateTime?
-  needsRelink  Boolean  @default(false)
-  plaidAccountId    String? @unique
-  plaidItemId       String?
-  plaidAccessToken  String?
-  plaidInstitutionId String?
+
+  // Plaid mapping (optional until a user connects)
+  plaidAccountId String? @unique
+  plaidItemId    String?
 
   holdings     Holding[]
   snapshots    DailySnapshot[]
+
+  plaidItem PlaidItem? @relation(fields: [plaidItemId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -63,7 +65,6 @@ model Holding {
   quantity   Decimal  @db.Decimal(24, 8)
   price      Decimal? @db.Decimal(24, 8)
   value      Decimal  @db.Decimal(24, 8)
-  securityId String?
 
   securityType String? // etf|stock|cash|fund|bond|unknown
   assetClass   String? // us_equity|intl_equity|bonds|cash|other
@@ -76,9 +77,6 @@ model Holding {
   updatedAt DateTime @updatedAt
 
   brokerageAccount BrokerageAccount @relation(fields: [brokerageAccountId], references: [id], onDelete: Cascade)
-  security Security? @relation(fields: [securityId], references: [id], onDelete: SetNull)
-
-  @@unique([brokerageAccountId, securityId])
 }
 
 model DailySnapshot {
@@ -97,15 +95,23 @@ model DailySnapshot {
   @@unique([brokerageAccountId, date])
 }
 
-model Security {
-  id              String   @id @default(cuid())
-  plaidSecurityId String   @unique
-  symbol          String?
-  name            String?
-  type            String?
+model PlaidItem {
+  id           String   @id @default(cuid())
+  userId       String
+
+  // Plaid identifiers
+  plaidItemId  String   @unique
+  accessToken  String
+
+  // Optional institution info captured from Link metadata
+  institutionId   String?
+  institutionName String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  holdings Holding[]
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accounts BrokerageAccount[]
+
+  @@index([userId])
 }

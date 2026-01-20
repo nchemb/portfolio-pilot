@@ -238,6 +238,37 @@ export async function syncPlaidAccounts({
       }
 
       const snapshotDate = dailySnapshotDate(now)
+
+      // Calculate yesterday's date to fetch previous snapshot
+      const yesterdayDate = new Date(snapshotDate)
+      yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1)
+
+      // Fetch yesterday's snapshot to calculate daily change
+      const yesterdaySnapshot = await prisma.dailySnapshot.findUnique({
+        where: {
+          brokerageAccountId_date: {
+            brokerageAccountId: account.id,
+            date: yesterdayDate,
+          },
+        },
+      })
+
+      // Calculate change metrics compared to yesterday
+      let changeAbs: Prisma.Decimal | null = null
+      let changePct: Prisma.Decimal | null = null
+
+      if (yesterdaySnapshot) {
+        const todayValue = new Prisma.Decimal(totalValue)
+        const yesterdayValue = yesterdaySnapshot.totalValue
+
+        changeAbs = todayValue.minus(yesterdayValue)
+
+        // Only calculate percentage if yesterday's value is not zero
+        if (!yesterdayValue.isZero()) {
+          changePct = changeAbs.dividedBy(yesterdayValue)
+        }
+      }
+
       await prisma.dailySnapshot.upsert({
         where: {
           brokerageAccountId_date: {
@@ -247,15 +278,15 @@ export async function syncPlaidAccounts({
         },
         update: {
           totalValue: toDecimal(totalValue),
-          changeAbs: toDecimal(0),
-          changePct: toDecimal(0),
+          changeAbs,
+          changePct,
         },
         create: {
           brokerageAccountId: account.id,
           date: snapshotDate,
           totalValue: toDecimal(totalValue),
-          changeAbs: toDecimal(0),
-          changePct: toDecimal(0),
+          changeAbs,
+          changePct,
         },
       })
 
