@@ -1,0 +1,111 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id // Clerk userId
+  email     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile   Profile?
+  accounts  BrokerageAccount[]
+}
+
+model Profile {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  ageRange      String?
+  riskTolerance String?  // low|medium|high
+  timeHorizon   String?  // short|long
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model BrokerageAccount {
+  id           String   @id @default(cuid())
+  userId       String
+  institution  String?
+  name         String?
+  mask         String?
+  type         String?  // brokerage|retirement etc
+  currency     String?
+  lastSyncedAt DateTime?
+  needsRelink  Boolean  @default(false)
+  plaidAccountId    String? @unique
+  plaidItemId       String?
+  plaidAccessToken  String?
+  plaidInstitutionId String?
+
+  holdings     Holding[]
+  snapshots    DailySnapshot[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Holding {
+  id                 String   @id @default(cuid())
+  brokerageAccountId String
+
+  ticker     String?
+  name       String
+  quantity   Decimal  @db.Decimal(24, 8)
+  price      Decimal? @db.Decimal(24, 8)
+  value      Decimal  @db.Decimal(24, 8)
+  securityId String?
+
+  securityType String? // etf|stock|cash|fund|bond|unknown
+  assetClass   String? // us_equity|intl_equity|bonds|cash|other
+  geography    String? // us|intl|global
+  style        String? // growth|value|blend
+
+  asOf DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  brokerageAccount BrokerageAccount @relation(fields: [brokerageAccountId], references: [id], onDelete: Cascade)
+  security Security? @relation(fields: [securityId], references: [id], onDelete: SetNull)
+
+  @@unique([brokerageAccountId, securityId])
+}
+
+model DailySnapshot {
+  id                 String   @id @default(cuid())
+  brokerageAccountId String
+
+  date        DateTime // store at midnight UTC or normalized day
+  totalValue  Decimal  @db.Decimal(24, 8)
+  changeAbs   Decimal? @db.Decimal(24, 8)
+  changePct   Decimal? @db.Decimal(10, 6)
+
+  createdAt DateTime @default(now())
+
+  brokerageAccount BrokerageAccount @relation(fields: [brokerageAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([brokerageAccountId, date])
+}
+
+model Security {
+  id              String   @id @default(cuid())
+  plaidSecurityId String   @unique
+  symbol          String?
+  name            String?
+  type            String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  holdings Holding[]
+}
