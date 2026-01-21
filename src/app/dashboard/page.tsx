@@ -4,7 +4,6 @@ import { redirect } from "next/navigation"
 import { auth } from "@clerk/nextjs/server"
 
 import { prisma } from "@/lib/prisma"
-import { Badge } from "@/components/ui/badge"
 import {
   Card,
   CardContent,
@@ -126,6 +125,41 @@ function assetClassBucket(assetClass?: string | null) {
   return "other"
 }
 
+function normalizeTicker(ticker?: string | null) {
+  const trimmed = ticker?.trim()
+  return trimmed ? trimmed.toUpperCase() : null
+}
+
+function resolveAssetClass(
+  fundProfileByTicker: Map<string, { assetClass: string | null }>,
+  ticker?: string | null,
+  fallback?: string | null
+) {
+  const normalized = normalizeTicker(ticker)
+  const profile = normalized ? fundProfileByTicker.get(normalized) : undefined
+  return profile?.assetClass ?? fallback ?? null
+}
+
+function resolveGeography(
+  fundProfileByTicker: Map<string, { geography: string | null }>,
+  ticker?: string | null,
+  fallback?: string | null
+) {
+  const normalized = normalizeTicker(ticker)
+  const profile = normalized ? fundProfileByTicker.get(normalized) : undefined
+  return profile?.geography ?? fallback ?? null
+}
+
+function resolveStyle(
+  fundProfileByTicker: Map<string, { style: string | null }>,
+  ticker?: string | null,
+  fallback?: string | null
+) {
+  const normalized = normalizeTicker(ticker)
+  const profile = normalized ? fundProfileByTicker.get(normalized) : undefined
+  return profile?.style ?? fallback ?? null
+}
+
 function isSameUtcDate(a: Date, b: Date): boolean {
   return (
     a.getUTCFullYear() === b.getUTCFullYear() &&
@@ -177,7 +211,7 @@ async function updateProfile(formData: FormData) {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams?: SearchParams
+  searchParams?: Promise<SearchParams>
 }) {
   const { userId } = await auth()
 
@@ -199,8 +233,9 @@ export default async function DashboardPage({
     )
   }
 
-  const activeTab = searchParams?.tab ?? "overview"
-  const saved = searchParams?.saved === "1"
+  const resolvedSearchParams = searchParams ? await searchParams : undefined
+  const activeTab = resolvedSearchParams?.tab ?? "overview"
+  const saved = resolvedSearchParams?.saved === "1"
 
   const [accounts, profile, user] = await Promise.all([
     prisma.brokerageAccount.findMany({
@@ -225,6 +260,27 @@ export default async function DashboardPage({
       ])
     : [[], null]
 
+  const fundProfiles =
+    holdings.length > 0
+      ? await prisma.fundProfile.findMany({
+          where: {
+            ticker: {
+              in: Array.from(
+                new Set(
+                  holdings
+                    .map((holding) => normalizeTicker(holding.ticker))
+                    .filter((ticker): ticker is string => Boolean(ticker))
+                )
+              ),
+            },
+          },
+      })
+    : []
+
+  const fundProfileByTicker = new Map(
+    fundProfiles.map((profile) => [profile.ticker.toUpperCase(), profile])
+  )
+
   const latestSyncAt = accounts.reduce<Date | null>((latest, acct) => {
     if (!acct.lastSyncedAt) return latest
     if (!latest || acct.lastSyncedAt > latest) return acct.lastSyncedAt
@@ -232,10 +288,33 @@ export default async function DashboardPage({
   }, null)
 
   const holdingsWithValue = holdings
-    .map((holding) => ({
-      holding,
-      marketValue: holdingMarketValue(holding),
-    }))
+    .map((holding) => {
+      const assetClass = resolveAssetClass(
+        fundProfileByTicker,
+        holding.ticker,
+        holding.assetClass
+      )
+      const geography = resolveGeography(
+        fundProfileByTicker,
+        holding.ticker,
+        holding.geography
+      )
+      const style = resolveStyle(
+        fundProfileByTicker,
+        holding.ticker,
+        holding.style
+      )
+
+      return {
+        holding: {
+          ...holding,
+          assetClass,
+          geography,
+          style,
+        },
+        marketValue: holdingMarketValue(holding),
+      }
+    })
     .sort((a, b) => b.marketValue - a.marketValue)
 
   const aggregatedHoldings = aggregateHoldings(
@@ -244,7 +323,24 @@ export default async function DashboardPage({
       marketValue: row.marketValue,
     })),
     accounts
-  )
+  ).map((holding) => ({
+    ...holding,
+    assetClass: resolveAssetClass(
+      fundProfileByTicker,
+      holding.ticker,
+      holding.assetClass
+    ),
+    geography: resolveGeography(
+      fundProfileByTicker,
+      holding.ticker,
+      holding.geography
+    ),
+    style: resolveStyle(
+      fundProfileByTicker,
+      holding.ticker,
+      holding.style
+    ),
+  }))
 
   const totalHoldingsValue = holdingsWithValue.reduce(
     (sum, row) => sum + row.marketValue,
@@ -310,7 +406,6 @@ export default async function DashboardPage({
     recommendedAllocation
   )
 
-  const topHoldings = aggregatedHoldings.slice(0, 6)
   const allHoldings = aggregatedHoldings
 
   const summaryParts = {
@@ -320,7 +415,7 @@ export default async function DashboardPage({
     cash: allocationRows.find((row) => row.bucket === "cash")?.pct ?? 0,
   }
 
-  const topPositions = topHoldings
+  const topPositions = allHoldings
     .slice(0, 3)
     .map((row) => row.ticker ?? row.name)
     .join(", ")
@@ -526,55 +621,6 @@ export default async function DashboardPage({
 
                 <Card>
                   <CardHeader>
-                    <CardTitle>Top holdings</CardTitle>
-                    <CardDescription>
-                      Largest positions by market value.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Ticker / Name</TableHead>
-                          <TableHead>Asset Class</TableHead>
-                          <TableHead className="text-right">Value</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {topHoldings.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={3} className="text-center">
-                              No holdings to display.
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          topHoldings.map((holding) => {
-                            const bucket = assetClassBucket(holding.assetClass)
-                            return (
-                              <TableRow key={holding.key}>
-                                <TableCell>
-                                  <div className="font-medium">
-                                    {holding.assetClass === "cash" ? "Cash" : holding.ticker ?? "--"}
-                                  </div>
-                                  <div className="text-muted-foreground text-xs">{holding.name}</div>
-                                </TableCell>
-                                <TableCell>
-                                  <Badge variant="secondary">{ASSET_CLASS_LABELS[bucket]}</Badge>
-                                </TableCell>
-                                <TableCell className="text-right">
-                                  {formatCurrency(holding.totalValue)}
-                                </TableCell>
-                              </TableRow>
-                            )
-                          })
-                        )}
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
                     <CardTitle>All holdings</CardTitle>
                     <CardDescription>
                       Full list of positions across linked accounts.
@@ -641,9 +687,6 @@ export default async function DashboardPage({
                           <div>
                             <div className="flex items-center gap-2 text-sm font-medium">
                               <span>{acct.institution ?? "Brokerage"}</span>
-                              {acct.needsRelink ? (
-                                <Badge variant="destructive">Needs relink</Badge>
-                              ) : null}
                             </div>
                             <div className="text-muted-foreground text-xs">
                               {acct.name ?? "Account"}
@@ -652,7 +695,6 @@ export default async function DashboardPage({
                           </div>
                           <PlaidResyncButton
                             brokerageAccountId={acct.id}
-                            needsRelink={acct.needsRelink ?? false}
                           />
                         </div>
                       ))}

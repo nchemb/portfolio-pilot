@@ -1,4 +1,4 @@
-import { Prisma, type BrokerageAccount } from "@prisma/client"
+import { Prisma } from "@prisma/client"
 
 import { plaidClient } from "@/lib/plaid"
 import { prisma } from "@/lib/prisma"
@@ -35,22 +35,25 @@ type SyncResult = {
   errors: PlaidSyncError[]
 }
 
+type BrokerageAccountWithPlaid = Prisma.BrokerageAccountGetPayload<{
+  include: { plaidItem: true }
+}>
+
+type FundProfileRecord = Prisma.FundProfileGetPayload<{}>
+
 type SyncOptions = {
   userId: string
-  accounts: BrokerageAccount[]
+  accounts: BrokerageAccountWithPlaid[]
   continueOnError: boolean
 }
 
-const RELINK_CODES = new Set([
-  "ITEM_LOGIN_REQUIRED",
-  "ITEM_ERROR",
-  "ITEM_LOCKED",
-  "ITEM_NOT_SUPPORTED",
-  "USER_SETUP_REQUIRED",
-])
-
 function toDecimal(value?: number | null) {
   return new Prisma.Decimal(value ?? 0)
+}
+
+function normalizeTicker(ticker?: string | null) {
+  const trimmed = ticker?.trim()
+  return trimmed ? trimmed.toUpperCase() : null
 }
 
 function assetClassForSecurity(security?: PlaidSecurity | null) {
@@ -92,6 +95,23 @@ function parsePlaidError(error: PlaidError) {
   return { code, message }
 }
 
+async function buildFundProfileMap(
+  tickers: string[]
+): Promise<Map<string, FundProfileRecord>> {
+  const uniqueTickers = Array.from(new Set(tickers))
+  if (uniqueTickers.length === 0) {
+    return new Map()
+  }
+
+  const profiles = await prisma.fundProfile.findMany({
+    where: { ticker: { in: uniqueTickers } },
+  })
+
+  return new Map(
+    profiles.map((profile) => [profile.ticker.toUpperCase(), profile])
+  )
+}
+
 export async function syncPlaidAccounts({
   userId,
   accounts,
@@ -105,6 +125,7 @@ export async function syncPlaidAccounts({
     string,
     Awaited<ReturnType<typeof plaidClient.accountsBalanceGet>>["data"]
   >()
+  const fundProfileCache = new Map<string, Map<string, FundProfileRecord>>()
 
   const now = new Date()
   let syncedAccounts = 0
@@ -113,7 +134,8 @@ export async function syncPlaidAccounts({
   const errors: PlaidSyncError[] = []
 
   for (const account of accounts) {
-    if (!account.plaidAccessToken || !account.plaidAccountId) {
+    const accessToken = account.plaidItem?.accessToken
+    if (!accessToken || !account.plaidAccountId) {
       errors.push({
         accountId: account.id,
         code: "MISSING_PLAID_CREDENTIALS",
@@ -124,22 +146,22 @@ export async function syncPlaidAccounts({
     }
 
     try {
-      let holdingsData = holdingsCache.get(account.plaidAccessToken)
+      let holdingsData = holdingsCache.get(accessToken)
       if (!holdingsData) {
         const holdingsResponse = await plaidClient.investmentsHoldingsGet({
-          access_token: account.plaidAccessToken,
+          access_token: accessToken,
         })
         holdingsData = holdingsResponse.data
-        holdingsCache.set(account.plaidAccessToken, holdingsData)
+        holdingsCache.set(accessToken, holdingsData)
       }
 
-      let balancesData = balancesCache.get(account.plaidAccessToken)
+      let balancesData = balancesCache.get(accessToken)
       if (!balancesData) {
         const balancesResponse = await plaidClient.accountsBalanceGet({
-          access_token: account.plaidAccessToken,
+          access_token: accessToken,
         })
         balancesData = balancesResponse.data
-        balancesCache.set(account.plaidAccessToken, balancesData)
+        balancesCache.set(accessToken, balancesData)
       }
 
       const securityById = new Map(
@@ -149,34 +171,38 @@ export async function syncPlaidAccounts({
         ])
       )
 
+      let fundProfileMap = fundProfileCache.get(accessToken)
+      if (!fundProfileMap) {
+        const tickers = (holdingsData.holdings ?? [])
+          .map((holding) => {
+            const security = holding.security_id
+              ? (securityById.get(holding.security_id) as
+                  | PlaidSecurity
+                  | undefined)
+              : undefined
+            return normalizeTicker(security?.ticker_symbol)
+          })
+          .filter((ticker): ticker is string => Boolean(ticker))
+
+        fundProfileMap = await buildFundProfileMap(tickers)
+        fundProfileCache.set(accessToken, fundProfileMap)
+      }
+
       const accountHoldings = (holdingsData.holdings ?? []).filter(
         (holding) => holding.account_id === account.plaidAccountId
       )
 
       let totalValue = 0
-      const seenSecurityIds: string[] = []
+      const holdingsToCreate: Prisma.HoldingCreateManyInput[] = []
 
       for (const holding of accountHoldings) {
         const security = holding.security_id
           ? (securityById.get(holding.security_id) as PlaidSecurity | undefined)
           : undefined
-        const plaidSecurityId =
-          holding.security_id ?? `cash:${account.plaidAccountId}`
-
-        const securityRecord = await prisma.security.upsert({
-          where: { plaidSecurityId },
-          update: {
-            symbol: security?.ticker_symbol ?? null,
-            name: security?.name ?? null,
-            type: security?.type ?? null,
-          },
-          create: {
-            plaidSecurityId,
-            symbol: security?.ticker_symbol ?? null,
-            name: security?.name ?? "Holding",
-            type: security?.type ?? null,
-          },
-        })
+        const tickerSymbol = normalizeTicker(security?.ticker_symbol)
+        const fundProfile = tickerSymbol
+          ? fundProfileMap.get(tickerSymbol)
+          : undefined
 
         const price = holding.institution_price ?? null
         const value =
@@ -184,40 +210,20 @@ export async function syncPlaidAccounts({
           (price != null ? price * holding.quantity : 0)
 
         totalValue += value ?? 0
-        seenSecurityIds.push(securityRecord.id)
 
-        await prisma.holding.upsert({
-          where: {
-            brokerageAccountId_securityId: {
-              brokerageAccountId: account.id,
-              securityId: securityRecord.id,
-            },
-          },
-          update: {
-            ticker: security?.ticker_symbol ?? null,
-            name: security?.name ?? "Holding",
-            quantity: toDecimal(holding.quantity),
-            price: price == null ? null : toDecimal(price),
-            value: toDecimal(value),
-            assetClass: assetClassForSecurity(security),
-            securityType: securityTypeForSecurity(security),
-            updatedAt: now,
-          },
-          create: {
-            brokerageAccountId: account.id,
-            securityId: securityRecord.id,
-            ticker: security?.ticker_symbol ?? null,
-            name: security?.name ?? "Holding",
-            quantity: toDecimal(holding.quantity),
-            price: price == null ? null : toDecimal(price),
-            value: toDecimal(value),
-            assetClass: assetClassForSecurity(security),
-            securityType: securityTypeForSecurity(security),
-            asOf: now,
-          },
+        holdingsToCreate.push({
+          brokerageAccountId: account.id,
+          ticker: tickerSymbol,
+          name: security?.name ?? holding.name ?? "Holding",
+          quantity: toDecimal(holding.quantity),
+          price: price == null ? null : toDecimal(price),
+          value: toDecimal(value),
+          assetClass: fundProfile?.assetClass ?? assetClassForSecurity(security),
+          geography: fundProfile?.geography ?? null,
+          style: fundProfile?.style ?? null,
+          securityType: securityTypeForSecurity(security),
+          asOf: now,
         })
-
-        holdingsUpserted += 1
       }
 
       if (accountHoldings.length === 0) {
@@ -228,13 +234,15 @@ export async function syncPlaidAccounts({
         totalValue = balanceValue ?? 0
       }
 
-      if (seenSecurityIds.length > 0) {
-        await prisma.holding.deleteMany({
-          where: {
-            brokerageAccountId: account.id,
-            securityId: { notIn: seenSecurityIds },
-          },
+      await prisma.holding.deleteMany({
+        where: { brokerageAccountId: account.id },
+      })
+
+      if (holdingsToCreate.length > 0) {
+        await prisma.holding.createMany({
+          data: holdingsToCreate,
         })
+        holdingsUpserted += holdingsToCreate.length
       }
 
       const snapshotDate = dailySnapshotDate(now)
@@ -294,7 +302,6 @@ export async function syncPlaidAccounts({
         where: { id: account.id },
         data: {
           lastSyncedAt: now,
-          needsRelink: false,
         },
       })
 
@@ -302,13 +309,6 @@ export async function syncPlaidAccounts({
       snapshotWritten = true
     } catch (error) {
       const parsed = parsePlaidError(error as PlaidError)
-
-      if (parsed.code && account.plaidItemId && RELINK_CODES.has(parsed.code)) {
-        await prisma.brokerageAccount.updateMany({
-          where: { userId, plaidItemId: account.plaidItemId },
-          data: { needsRelink: true },
-        })
-      }
 
       errors.push({
         accountId: account.id,

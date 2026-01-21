@@ -81,43 +81,57 @@ export async function POST(request: Request) {
       create: { id: userId, email: null },
     })
 
-    await prisma.$transaction(
-      accounts.map((account) =>
-        prisma.brokerageAccount.upsert({
-          where: { plaidAccountId: account.id },
-          update: {
-            userId,
-            institution: institutionName,
-            name: account.name ?? null,
-            mask: account.mask ?? null,
-            type: account.subtype ?? account.type ?? null,
-            currency: "USD",
-            lastSyncedAt: new Date(),
-            needsRelink: false,
-            plaidAccessToken: accessToken,
-            plaidItemId: itemId,
-            plaidInstitutionId: institutionId,
-          },
-          create: {
-            userId,
-            institution: institutionName,
-            name: account.name ?? null,
-            mask: account.mask ?? null,
-            type: account.subtype ?? account.type ?? null,
-            currency: "USD",
-            lastSyncedAt: new Date(),
-            needsRelink: false,
-            plaidAccessToken: accessToken,
-            plaidItemId: itemId,
-            plaidInstitutionId: institutionId,
-            plaidAccountId: account.id,
-          },
-        })
+    await prisma.$transaction(async (tx) => {
+      const plaidItem = await tx.plaidItem.upsert({
+        where: { plaidItemId: itemId },
+        update: {
+          userId,
+          accessToken,
+          institutionId,
+          institutionName,
+        },
+        create: {
+          userId,
+          plaidItemId: itemId,
+          accessToken,
+          institutionId,
+          institutionName,
+        },
+      })
+
+      await Promise.all(
+        accounts.map((account) =>
+          tx.brokerageAccount.upsert({
+            where: { plaidAccountId: account.id },
+            update: {
+              userId,
+              institution: institutionName,
+              name: account.name ?? null,
+              mask: account.mask ?? null,
+              type: account.subtype ?? account.type ?? null,
+              currency: "USD",
+              lastSyncedAt: new Date(),
+              plaidItemId: plaidItem.plaidItemId,
+            },
+            create: {
+              userId,
+              institution: institutionName,
+              name: account.name ?? null,
+              mask: account.mask ?? null,
+              type: account.subtype ?? account.type ?? null,
+              currency: "USD",
+              lastSyncedAt: new Date(),
+              plaidItemId: plaidItem.plaidItemId,
+              plaidAccountId: account.id,
+            },
+          })
+        )
       )
-    )
+    })
 
     const linkedAccounts = await prisma.brokerageAccount.findMany({
       where: { userId, plaidItemId: itemId },
+      include: { plaidItem: true },
     })
 
     if (linkedAccounts.length > 0) {

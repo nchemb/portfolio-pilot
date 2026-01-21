@@ -48,7 +48,7 @@ model BrokerageAccount {
   holdings     Holding[]
   snapshots    DailySnapshot[]
 
-  plaidItem PlaidItem? @relation(fields: [plaidItemId], references: [id], onDelete: Cascade)
+  plaidItem PlaidItem? @relation(fields: [plaidItemId], references: [plaidItemId], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -60,6 +60,10 @@ model Holding {
   id                 String   @id @default(cuid())
   brokerageAccountId String
 
+  // Optional normalized security reference (Phase B: look-through)
+  securityId String?
+
+  // Raw display fields (keep for now; can be backfilled from Security)
   ticker     String?
   name       String
   quantity   Decimal  @db.Decimal(24, 8)
@@ -77,6 +81,10 @@ model Holding {
   updatedAt DateTime @updatedAt
 
   brokerageAccount BrokerageAccount @relation(fields: [brokerageAccountId], references: [id], onDelete: Cascade)
+  security         Security?        @relation(fields: [securityId], references: [id], onDelete: SetNull)
+
+  @@index([brokerageAccountId])
+  @@index([securityId])
 }
 
 model DailySnapshot {
@@ -114,4 +122,117 @@ model PlaidItem {
   accounts BrokerageAccount[]
 
   @@index([userId])
+}
+
+model Security {
+  id String @id @default(cuid())
+
+  // Identifiers
+  ticker String?
+  name   String
+  isin   String?
+  cusip  String?
+
+  // Classification
+  securityType String? // etf|stock|fund|bond|crypto|cash|unknown
+  assetClass   String? // us_equity|intl_equity|bonds|cash|other
+  geography    String? // us|intl|global
+  style        String? // growth|value|blend
+  sector       String? // optional (e.g., Technology, Financials)
+
+  // Data source metadata
+  primaryExchange String?
+  currency        String?
+  dataProvider    String? // polygon|massive|other
+
+  // Relationships
+  holdings            Holding[]
+  etfConstituents     EtfConstituent[] @relation("EtfToConstituents")
+  constituentOfEtfs   EtfConstituent[] @relation("ConstituentToEtfs")
+  pricesDaily         SecurityPriceDaily[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ticker])
+  @@index([isin])
+  @@index([cusip])
+}
+
+model EtfConstituent {
+  id String @id @default(cuid())
+
+  // The ETF / fund
+  etfSecurityId String
+  // The underlying constituent
+  constituentSecurityId String
+
+  // Weight of constituent within the ETF (0-1 or 0-100; keep consistent in code)
+  weight Decimal @db.Decimal(10, 6)
+
+  // As-of date from the provider
+  asOf DateTime
+
+  // Optional metadata
+  source       String? // polygon|massive|issuer|other
+  sourceSymbol String? // if provider uses a different identifier
+
+  etf         Security @relation("EtfToConstituents", fields: [etfSecurityId], references: [id], onDelete: Cascade)
+  constituent Security @relation("ConstituentToEtfs", fields: [constituentSecurityId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([etfSecurityId, constituentSecurityId, asOf])
+  @@index([etfSecurityId])
+  @@index([constituentSecurityId])
+}
+
+model SecurityPriceDaily {
+  id String @id @default(cuid())
+
+  securityId String
+  date       DateTime // normalized day
+
+  open  Decimal? @db.Decimal(24, 8)
+  high  Decimal? @db.Decimal(24, 8)
+  low   Decimal? @db.Decimal(24, 8)
+  close Decimal? @db.Decimal(24, 8)
+
+  // Optional convenience fields
+  adjClose Decimal? @db.Decimal(24, 8)
+  volume   BigInt?
+
+  source String? // polygon|massive|other
+
+  security  Security @relation(fields: [securityId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([securityId, date])
+  @@index([date])
+}
+
+model FundProfile {
+  id String @id @default(cuid())
+
+  // Primary identifier
+  ticker String @unique
+
+  // Optional display fields
+  name String?
+
+  // Phase 1 bucketing (MVP)
+  assetClass String // us_equity|intl_equity|bonds|cash|other
+  geography  String? // us|intl|global
+  style      String? // growth|value|blend
+  marketCapBias String? // large|mid|small|all
+
+  // Where this classification came from
+  source String? // manual|etfdb|issuer|other
+  notes  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([assetClass])
+  @@index([geography])
 }

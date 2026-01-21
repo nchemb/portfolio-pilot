@@ -7,12 +7,10 @@ import { Button } from "@/components/ui/button"
 
 type PlaidResyncButtonProps = {
   brokerageAccountId: string
-  needsRelink?: boolean
 }
 
 export function PlaidResyncButton({
   brokerageAccountId,
-  needsRelink = false,
 }: PlaidResyncButtonProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
@@ -20,7 +18,7 @@ export function PlaidResyncButton({
   const [error, setError] = useState<string | null>(null)
 
   const handleResync = async () => {
-    if (loading || needsRelink) return
+    if (loading) return
     setLoading(true)
     setMessage(null)
     setError(null)
@@ -54,13 +52,11 @@ export function PlaidResyncButton({
         variant="outline"
         size="sm"
         onClick={handleResync}
-        disabled={loading || needsRelink}
+        disabled={loading}
       >
-        {needsRelink ? "Reconnect" : loading ? "Syncing..." : "Resync"}
+        {loading ? "Syncing..." : "Resync"}
       </Button>
-      {needsRelink ? (
-        <p className="text-rose-600 text-xs mt-1">Reconnect via Plaid</p>
-      ) : error ? (
+      {error ? (
         <p className="text-rose-600 text-xs mt-1">{error}</p>
       ) : message ? (
         <p className="text-emerald-600 text-xs mt-1">{message}</p>

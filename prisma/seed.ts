@@ -14,272 +14,81 @@ console.log("[seed] DATABASE_URL:", safeDb);
 console.log("[seed] starting...");
 
 async function main() {
-  // 1) User + Profile
-  const user = await prisma.user.upsert({
-    where: { id: USER_ID },
-    update: {
-      email: "seed@portfolio-copilot.local",
-      profile: {
-        upsert: {
-          create: {
-            ageRange: "30-39",
-            riskTolerance: "medium",
-            timeHorizon: "long",
-          },
-          update: {
-            ageRange: "30-39",
-            riskTolerance: "medium",
-            timeHorizon: "long",
-          },
-        },
-      },
-    },
-    create: {
-      id: USER_ID,
-      email: "seed@portfolio-copilot.local",
-      profile: {
-        create: {
-          ageRange: "30-39",
-          riskTolerance: "medium",
-          timeHorizon: "long",
-        },
-      },
-    },
-    include: { profile: true },
-  });
-
-  // 2) Brokerage Account
-  const account = await prisma.brokerageAccount.upsert({
-    where: { id: "acct_seed_schwab" },
-    update: {
-      institution: "Charles Schwab",
-      name: "Brokerage",
-      mask: "1234",
-      type: "brokerage",
-      currency: "USD",
-      lastSyncedAt: new Date(),
-    },
-    create: {
-      id: "acct_seed_schwab",
-      userId: user.id,
-      institution: "Charles Schwab",
-      name: "Brokerage",
-      mask: "1234",
-      type: "brokerage",
-      currency: "USD",
-      lastSyncedAt: new Date(),
-    },
-  });
-
-  // 3) Clear existing holdings for this account (so seed is repeatable)
-  await prisma.holding.deleteMany({
-    where: { brokerageAccountId: account.id },
-  });
-
-  // 4) Insert Holdings (mix ETFs + stocks + cash)
-  const holdings: Prisma.HoldingCreateManyInput[] = [
-    {
-      brokerageAccountId: account.id,
-      ticker: "VTI",
-      name: "Vanguard Total Stock Market ETF",
-      quantity: new Prisma.Decimal("12.34567890"),
-      price: new Prisma.Decimal("250.12"),
-      value: new Prisma.Decimal("3087.73"),
-      securityType: "etf",
-      assetClass: "us_equity",
-      geography: "us",
-      style: "blend",
-      asOf: new Date(),
-    },
-    {
-      brokerageAccountId: account.id,
-      ticker: "VXUS",
-      name: "Vanguard Total International Stock ETF",
-      quantity: new Prisma.Decimal("20.00000000"),
-      price: new Prisma.Decimal("58.40"),
-      value: new Prisma.Decimal("1168.00"),
-      securityType: "etf",
-      assetClass: "intl_equity",
-      geography: "intl",
-      style: "blend",
-      asOf: new Date(),
-    },
-    {
-      brokerageAccountId: account.id,
-      ticker: "BND",
-      name: "Vanguard Total Bond Market ETF",
-      quantity: new Prisma.Decimal("15.00000000"),
-      price: new Prisma.Decimal("72.15"),
-      value: new Prisma.Decimal("1082.25"),
-      securityType: "etf",
-      assetClass: "bonds",
-      geography: "us",
-      style: null,
-      asOf: new Date(),
-    },
-    {
-      brokerageAccountId: account.id,
-      ticker: "QQQ",
-      name: "Invesco QQQ Trust",
-      quantity: new Prisma.Decimal("3.50000000"),
-      price: new Prisma.Decimal("420.50"),
-      value: new Prisma.Decimal("1471.75"),
-      securityType: "etf",
-      assetClass: "us_equity",
-      geography: "us",
-      style: "growth",
-      asOf: new Date(),
-    },
-    {
-      brokerageAccountId: account.id,
-      ticker: "AAPL",
-      name: "Apple Inc.",
-      quantity: new Prisma.Decimal("5.00000000"),
-      price: new Prisma.Decimal("195.10"),
-      value: new Prisma.Decimal("975.50"),
-      securityType: "stock",
-      assetClass: "us_equity",
-      geography: "us",
-      style: "growth",
-      asOf: new Date(),
-    },
-    {
-      brokerageAccountId: account.id,
-      ticker: "MSFT",
-      name: "Microsoft Corporation",
-      quantity: new Prisma.Decimal("2.00000000"),
-      price: new Prisma.Decimal("415.25"),
-      value: new Prisma.Decimal("830.50"),
-      securityType: "stock",
-      assetClass: "us_equity",
-      geography: "us",
-      style: "growth",
-      asOf: new Date(),
-    },
-    {
-      brokerageAccountId: account.id,
-      ticker: "COST",
-      name: "Costco Wholesale Corporation",
-      quantity: new Prisma.Decimal("1.00000000"),
-      price: new Prisma.Decimal("720.00"),
-      value: new Prisma.Decimal("720.00"),
-      securityType: "stock",
-      assetClass: "us_equity",
-      geography: "us",
-      style: "blend",
-      asOf: new Date(),
-    },
-    {
-      brokerageAccountId: account.id,
-      ticker: "VNQ",
-      name: "Vanguard Real Estate ETF",
-      quantity: new Prisma.Decimal("6.00000000"),
-      price: new Prisma.Decimal("85.30"),
-      value: new Prisma.Decimal("511.80"),
-      securityType: "etf",
-      assetClass: "other",
-      geography: "us",
-      style: null,
-      asOf: new Date(),
-    },
-    {
-      brokerageAccountId: account.id,
-      ticker: null,
-      name: "Cash",
-      quantity: new Prisma.Decimal("1.00000000"),
-      price: null,
-      value: new Prisma.Decimal("1250.00"),
-      securityType: "cash",
-      assetClass: "cash",
-      geography: "us",
-      style: null,
-      asOf: new Date(),
-    },
-    {
-      brokerageAccountId: account.id,
-      ticker: "IWM",
-      name: "iShares Russell 2000 ETF",
-      quantity: new Prisma.Decimal("4.00000000"),
-      price: new Prisma.Decimal("205.75"),
-      value: new Prisma.Decimal("823.00"),
-      securityType: "etf",
-      assetClass: "us_equity",
-      geography: "us",
-      style: "blend",
-      asOf: new Date(),
-    },
+  // 1.5) Fund profiles (Phase 1: ETF -> primary bucket)
+  // Source list (tickers/names): ETFdb Top 100 by AUM (we seed the first ~30)
+  const fundProfiles: Array<{
+    ticker: string
+    name: string
+    assetClass: string
+    geography?: string | null
+    style?: string | null
+    marketCapBias?: string | null
+    source?: string | null
+    notes?: string | null
+  }> = [
+    { ticker: "VOO", name: "Vanguard S&P 500 ETF", assetClass: "us_equity", geography: "us", style: "blend", marketCapBias: "large", source: "manual", notes: "S&P 500" },
+    { ticker: "IVV", name: "iShares Core S&P 500 ETF", assetClass: "us_equity", geography: "us", style: "blend", marketCapBias: "large", source: "manual", notes: "S&P 500" },
+    { ticker: "SPY", name: "SPDR S&P 500 ETF Trust", assetClass: "us_equity", geography: "us", style: "blend", marketCapBias: "large", source: "manual", notes: "S&P 500" },
+    { ticker: "VTI", name: "Vanguard Total Stock Market ETF", assetClass: "us_equity", geography: "us", style: "blend", marketCapBias: "all", source: "manual", notes: "US total market" },
+    { ticker: "QQQ", name: "Invesco QQQ Trust Series I", assetClass: "us_equity", geography: "us", style: "growth", marketCapBias: "large", source: "manual", notes: "Nasdaq 100" },
+    { ticker: "VUG", name: "Vanguard Growth ETF", assetClass: "us_equity", geography: "us", style: "growth", marketCapBias: "large", source: "manual", notes: "US large growth" },
+    { ticker: "VEA", name: "Vanguard FTSE Developed Markets ETF", assetClass: "intl_equity", geography: "intl", style: "blend", marketCapBias: "large", source: "manual", notes: "Intl developed" },
+    { ticker: "IEFA", name: "iShares Core MSCI EAFE ETF", assetClass: "intl_equity", geography: "intl", style: "blend", marketCapBias: "large", source: "manual", notes: "EAFE" },
+    { ticker: "VTV", name: "Vanguard Value ETF", assetClass: "us_equity", geography: "us", style: "value", marketCapBias: "large", source: "manual", notes: "US large value" },
+    { ticker: "GLD", name: "SPDR Gold Shares", assetClass: "other", geography: "global", style: null, marketCapBias: null, source: "manual", notes: "Gold" },
+    { ticker: "BND", name: "Vanguard Total Bond Market ETF", assetClass: "bonds", geography: "us", style: null, marketCapBias: null, source: "manual", notes: "US total bond" },
+    { ticker: "AGG", name: "iShares Core U.S. Aggregate Bond ETF", assetClass: "bonds", geography: "us", style: null, marketCapBias: null, source: "manual", notes: "US aggregate bond" },
+    { ticker: "IEMG", name: "iShares Core MSCI Emerging Markets ETF", assetClass: "intl_equity", geography: "intl", style: "blend", marketCapBias: "all", source: "manual", notes: "Emerging markets" },
+    { ticker: "VXUS", name: "Vanguard Total International Stock ETF", assetClass: "intl_equity", geography: "intl", style: "blend", marketCapBias: "all", source: "manual", notes: "Intl total market ex-US" },
+    { ticker: "IWF", name: "iShares Russell 1000 Growth ETF", assetClass: "us_equity", geography: "us", style: "growth", marketCapBias: "large", source: "manual", notes: "US large growth" },
+    { ticker: "VGT", name: "Vanguard Information Technology ETF", assetClass: "us_equity", geography: "us", style: "growth", marketCapBias: "large", source: "manual", notes: "US sector: technology" },
+    { ticker: "VWO", name: "Vanguard FTSE Emerging Markets ETF", assetClass: "intl_equity", geography: "intl", style: "blend", marketCapBias: "all", source: "manual", notes: "Emerging markets" },
+    { ticker: "IJH", name: "iShares Core S&P Mid-Cap ETF", assetClass: "us_equity", geography: "us", style: "blend", marketCapBias: "mid", source: "manual", notes: "US mid cap" },
+    { ticker: "SPYM", name: "State Street SPDR Portfolio S&P 500 ETF", assetClass: "us_equity", geography: "us", style: "blend", marketCapBias: "large", source: "manual", notes: "S&P 500" },
+    { ticker: "VIG", name: "Vanguard Dividend Appreciation ETF", assetClass: "us_equity", geography: "us", style: "blend", marketCapBias: "large", source: "manual", notes: "Dividend growth" },
+    { ticker: "IJR", name: "iShares Core S&P Small-Cap ETF", assetClass: "us_equity", geography: "us", style: "blend", marketCapBias: "small", source: "manual", notes: "US small cap" },
+    { ticker: "VO", name: "Vanguard Mid-Cap ETF", assetClass: "us_equity", geography: "us", style: "blend", marketCapBias: "mid", source: "manual", notes: "US mid cap" },
+    { ticker: "XLK", name: "State Street Technology Select Sector SPDR ETF", assetClass: "us_equity", geography: "us", style: "growth", marketCapBias: "large", source: "manual", notes: "US sector: technology" },
+    { ticker: "RSP", name: "Invesco S&P 500 Equal Weight ETF", assetClass: "us_equity", geography: "us", style: "blend", marketCapBias: "large", source: "manual", notes: "S&P 500 equal weight" },
+    { ticker: "ITOT", name: "iShares Core S&P Total U.S. Stock Market ETF", assetClass: "us_equity", geography: "us", style: "blend", marketCapBias: "all", source: "manual", notes: "US total market" },
+    { ticker: "IWM", name: "iShares Russell 2000 ETF", assetClass: "us_equity", geography: "us", style: "blend", marketCapBias: "small", source: "manual", notes: "US small cap" },
+    { ticker: "SCHD", name: "Schwab US Dividend Equity ETF", assetClass: "us_equity", geography: "us", style: "value", marketCapBias: "large", source: "manual", notes: "Dividend equity" },
+    { ticker: "BNDX", name: "Vanguard Total International Bond ETF", assetClass: "bonds", geography: "intl", style: null, marketCapBias: null, source: "manual", notes: "Intl investment-grade bond (hedged)" },
+    { ticker: "IBIT", name: "iShares Bitcoin Trust ETF", assetClass: "other", geography: "global", style: null, marketCapBias: null, source: "manual", notes: "Bitcoin" },
+    { ticker: "VB", name: "Vanguard Small Cap ETF", assetClass: "us_equity", geography: "us", style: "blend", marketCapBias: "small", source: "manual", notes: "US small cap" },
+    { ticker: "SGOV", name: "iShares 0-3 Month Treasury Bond ETF", assetClass: "cash", geography: "us", style: null, marketCapBias: null, source: "manual", notes: "Treasury bills / cash proxy" },
   ];
 
-  await prisma.holding.createMany({ data: holdings });
+  await prisma.$transaction(
+    fundProfiles.map((fp) =>
+      prisma.fundProfile.upsert({
+        where: { ticker: fp.ticker },
+        update: {
+          name: fp.name,
+          assetClass: fp.assetClass,
+          geography: fp.geography ?? null,
+          style: fp.style ?? null,
+          marketCapBias: fp.marketCapBias ?? null,
+          source: fp.source ?? "manual",
+          notes: fp.notes ?? null,
+        },
+        create: {
+          ticker: fp.ticker,
+          name: fp.name,
+          assetClass: fp.assetClass,
+          geography: fp.geography ?? null,
+          style: fp.style ?? null,
+          marketCapBias: fp.marketCapBias ?? null,
+          source: fp.source ?? "manual",
+          notes: fp.notes ?? null,
+        },
+      })
+    )
+  );
 
-  // 5) Daily snapshots (yesterday + today)
-  const today = new Date();
-  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
-
-  // Normalize to a “date bucket” (optional): set to midnight local
-  const toMidnight = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-
-  const t = toMidnight(today);
-  const y = toMidnight(yesterday);
-
-  // Compute total value from holdings
-  const totalValue = holdings
-    .reduce((sum, h) => sum + Number(h.value), 0);
-
-  // Set a fake daily move
-  const yesterdayValue = totalValue - 123.45;
-  const changeAbs = totalValue - yesterdayValue;
-  const changePct = yesterdayValue === 0 ? 0 : changeAbs / yesterdayValue;
-
-  await prisma.dailySnapshot.upsert({
-    where: { brokerageAccountId_date: { brokerageAccountId: account.id, date: y } },
-    update: { totalValue: new Prisma.Decimal(yesterdayValue.toFixed(2)) },
-    create: {
-      brokerageAccountId: account.id,
-      date: y,
-      totalValue: new Prisma.Decimal(yesterdayValue.toFixed(2)),
-      changeAbs: null,
-      changePct: null,
-    },
-  });
-
-  await prisma.dailySnapshot.upsert({
-    where: { brokerageAccountId_date: { brokerageAccountId: account.id, date: t } },
-    update: {
-      totalValue: new Prisma.Decimal(totalValue.toFixed(2)),
-      changeAbs: new Prisma.Decimal(changeAbs.toFixed(2)),
-      changePct: new Prisma.Decimal(changePct.toFixed(6)),
-    },
-    create: {
-      brokerageAccountId: account.id,
-      date: t,
-      totalValue: new Prisma.Decimal(totalValue.toFixed(2)),
-      changeAbs: new Prisma.Decimal(changeAbs.toFixed(2)),
-      changePct: new Prisma.Decimal(changePct.toFixed(6)),
-    },
-  });
-
-  const counts = await Promise.all([
-    prisma.user.count(),
-    prisma.profile.count(),
-    prisma.brokerageAccount.count(),
-    prisma.holding.count(),
-    prisma.dailySnapshot.count(),
-  ]);
-  console.log("[seed] row counts", {
-    users: counts[0],
-    profiles: counts[1],
-    brokerageAccounts: counts[2],
-    holdings: counts[3],
-    dailySnapshots: counts[4],
-  });
-
-  console.log("✅ Seed complete:", {
-    userId: user.id,
-    accountId: account.id,
-    holdings: holdings.length,
-    totalValue: totalValue.toFixed(2),
-  });
+  // Only log fundProfiles count
+  const fundCount = await prisma.fundProfile.count();
+  console.log("[seed] fund profiles upserted:", fundCount);
 }
 
 main()

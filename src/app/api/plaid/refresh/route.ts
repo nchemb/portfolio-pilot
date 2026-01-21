@@ -21,6 +21,7 @@ export async function POST() {
 
   const accounts = await prisma.brokerageAccount.findMany({
     where: { userId },
+    include: { plaidItem: true },
   })
 
   if (accounts.length === 0) {

@@ -40,6 +40,7 @@ export async function POST(request: Request) {
       userId,
       ...(brokerageAccountId ? { id: brokerageAccountId } : { plaidItemId }),
     },
+    include: { plaidItem: true },
   })
 
   if (accounts.length === 0) {
