@@ -56,32 +56,35 @@ export function RecommendedAllocationCard({
   const mostOverweight = overweightBuckets[0]
   const mostUnderweight = underweightBuckets[0]
 
-  // Generate actionable hint
-  let actionHint = "You're roughly aligned with your target mix."
-  const extremeVariances = buckets.filter((item) => Math.abs(item.variance) > 10)
-
-  if (extremeVariances.length > 0) {
-    const extreme = extremeVariances[0]
-    if (extreme.variance > 10) {
-      if (extreme.bucket === "cash") {
-        actionHint = "Consider deploying excess cash according to target mix."
-      } else {
-        actionHint = `${ASSET_CLASS_LABELS[extreme.bucket]} is materially above target.`
-      }
-    } else if (extreme.variance < -10) {
-      actionHint = `${ASSET_CLASS_LABELS[extreme.bucket]} is materially below target.`
-    }
-  }
+  const isOnTrack = buckets.every((item) => Math.abs(item.variance) <= 3)
+  const statusLabel = isOnTrack ? "On track" : "Needs attention"
+  const statusTone = isOnTrack
+    ? "bg-muted text-muted-foreground"
+    : "bg-accent text-foreground"
+  const actionHint = isOnTrack
+    ? "No action needed today."
+    : mostUnderweight
+      ? `Next best action: direct your next contributions toward ${ASSET_CLASS_LABELS[mostUnderweight.bucket]}.`
+      : "Next best action: direct your next contributions toward your most underweight allocation."
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Recommended allocation</CardTitle>
-        <CardDescription className="text-sm leading-relaxed">
-          {hasProfile
-            ? recommendationSummary
-            : "Complete your profile in Settings to see personalized recommendations."}
-        </CardDescription>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <CardTitle>Recommended allocation</CardTitle>
+            <CardDescription className="text-sm leading-relaxed">
+              {hasProfile
+                ? recommendationSummary
+                : "Complete your profile in Settings to see personalized recommendations."}
+            </CardDescription>
+          </div>
+          {hasProfile && totalHoldingsValue > 0 ? (
+            <span className={`rounded-full px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide ${statusTone}`}>
+              {statusLabel}
+            </span>
+          ) : null}
+        </div>
       </CardHeader>
       <CardContent>
         {!hasProfile ? (
@@ -109,7 +112,7 @@ export function RecommendedAllocationCard({
                   <span className="font-medium">
                     {ASSET_CLASS_LABELS[mostOverweight.bucket]}
                   </span>
-                  <span className="text-amber-600">
+                  <span className="text-amber-600 font-medium">
                     +{mostOverweight.variance.toFixed(1)}%
                   </span>
                 </div>
@@ -120,7 +123,7 @@ export function RecommendedAllocationCard({
                   <span className="font-medium">
                     {ASSET_CLASS_LABELS[mostUnderweight.bucket]}
                   </span>
-                  <span className="text-blue-600">
+                  <span className="text-blue-600 font-medium">
                     {mostUnderweight.variance.toFixed(1)}%
                   </span>
                 </div>

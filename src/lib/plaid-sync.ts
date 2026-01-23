@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client"
 
 import { plaidClient } from "@/lib/plaid"
 import { prisma } from "@/lib/prisma"
+import { upsertDailySnapshotForAccount } from "@/lib/snapshots"
 
 type PlaidSecurity = {
   security_id: string
@@ -81,9 +82,6 @@ function securityTypeForSecurity(security?: PlaidSecurity | null) {
   return "unknown"
 }
 
-function dailySnapshotDate(now: Date) {
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
-}
 
 function parsePlaidError(error: PlaidError) {
   const code = error.response?.data?.error_code ?? null
@@ -192,7 +190,6 @@ export async function syncPlaidAccounts({
         (holding) => holding.account_id === account.plaidAccountId
       )
 
-      let totalValue = 0
       const holdingsToCreate: Prisma.HoldingCreateManyInput[] = []
 
       for (const holding of accountHoldings) {
@@ -209,12 +206,10 @@ export async function syncPlaidAccounts({
           holding.institution_value ??
           (price != null ? price * holding.quantity : 0)
 
-        totalValue += value ?? 0
-
         holdingsToCreate.push({
           brokerageAccountId: account.id,
           ticker: tickerSymbol,
-          name: security?.name ?? holding.name ?? "Holding",
+          name: security?.name ?? "Holding",
           quantity: toDecimal(holding.quantity),
           price: price == null ? null : toDecimal(price),
           value: toDecimal(value),
@@ -224,14 +219,6 @@ export async function syncPlaidAccounts({
           securityType: securityTypeForSecurity(security),
           asOf: now,
         })
-      }
-
-      if (accountHoldings.length === 0) {
-        const balanceAccount = balancesData.accounts.find(
-          (acct) => acct.account_id === account.plaidAccountId
-        )
-        const balanceValue = balanceAccount?.balances?.current ?? null
-        totalValue = balanceValue ?? 0
       }
 
       await prisma.holding.deleteMany({
@@ -245,58 +232,10 @@ export async function syncPlaidAccounts({
         holdingsUpserted += holdingsToCreate.length
       }
 
-      const snapshotDate = dailySnapshotDate(now)
-
-      // Calculate yesterday's date to fetch previous snapshot
-      const yesterdayDate = new Date(snapshotDate)
-      yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1)
-
-      // Fetch yesterday's snapshot to calculate daily change
-      const yesterdaySnapshot = await prisma.dailySnapshot.findUnique({
-        where: {
-          brokerageAccountId_date: {
-            brokerageAccountId: account.id,
-            date: yesterdayDate,
-          },
-        },
-      })
-
-      // Calculate change metrics compared to yesterday
-      let changeAbs: Prisma.Decimal | null = null
-      let changePct: Prisma.Decimal | null = null
-
-      if (yesterdaySnapshot) {
-        const todayValue = new Prisma.Decimal(totalValue)
-        const yesterdayValue = yesterdaySnapshot.totalValue
-
-        changeAbs = todayValue.minus(yesterdayValue)
-
-        // Only calculate percentage if yesterday's value is not zero
-        if (!yesterdayValue.isZero()) {
-          changePct = changeAbs.dividedBy(yesterdayValue)
-        }
-      }
-
-      await prisma.dailySnapshot.upsert({
-        where: {
-          brokerageAccountId_date: {
-            brokerageAccountId: account.id,
-            date: snapshotDate,
-          },
-        },
-        update: {
-          totalValue: toDecimal(totalValue),
-          changeAbs,
-          changePct,
-        },
-        create: {
-          brokerageAccountId: account.id,
-          date: snapshotDate,
-          totalValue: toDecimal(totalValue),
-          changeAbs,
-          changePct,
-        },
-      })
+      // Upsert daily snapshot using the centralized helper
+      // This computes totalValue from holdings and calculates changeAbs/changePct
+      // based on the most recent snapshot strictly before today
+      await upsertDailySnapshotForAccount(account.id)
 
       await prisma.brokerageAccount.update({
         where: { id: account.id },
@@ -308,6 +247,7 @@ export async function syncPlaidAccounts({
       syncedAccounts += 1
       snapshotWritten = true
     } catch (error) {
+      console.error("[syncPlaidAccounts] error", error)
       const parsed = parsePlaidError(error as PlaidError)
 
       errors.push({

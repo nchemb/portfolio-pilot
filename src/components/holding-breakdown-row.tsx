@@ -1,10 +1,12 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { ChevronRight } from "lucide-react"
+import { useRouter } from "next/navigation"
 
 import type { AggregatedHolding } from "@/lib/holdings"
-import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Select } from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -16,7 +18,10 @@ import {
 
 type HoldingBreakdownRowProps = {
   holding: AggregatedHolding
-  bucketLabel: string
+  tickerNormalized: string | null
+  effectiveAssetClass: string
+  effectiveSource: "override" | "fundProfile" | "securityType" | "holding" | "fallback"
+  hasOverride: boolean
 }
 
 function formatCurrency(value: number): string {
@@ -29,9 +34,23 @@ function formatCurrency(value: number): string {
 
 export function HoldingBreakdownRow({
   holding,
-  bucketLabel,
+  tickerNormalized,
+  effectiveAssetClass,
+  effectiveSource,
+  hasOverride,
 }: HoldingBreakdownRowProps) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [isEditing, setIsEditing] = useState(false)
+  const [draftAssetClass, setDraftAssetClass] = useState(effectiveAssetClass)
+
+  useEffect(() => {
+    if (!isEditing) {
+      setDraftAssetClass(effectiveAssetClass)
+    }
+  }, [effectiveAssetClass, isEditing])
 
   const toggle = useCallback(() => {
     setOpen((prev) => !prev)
@@ -46,6 +65,83 @@ export function HoldingBreakdownRow({
     },
     [toggle]
   )
+
+  const handleAssetClassSave = async () => {
+    if (!tickerNormalized) {
+      setError("Missing ticker.")
+      return
+    }
+    const nextValue = draftAssetClass
+    if (nextValue === effectiveAssetClass) {
+      setIsEditing(false)
+      return
+    }
+    setSaving(true)
+    setError(null)
+
+    const response = await fetch("/api/overrides/upsert", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ticker: tickerNormalized,
+        assetClass: nextValue,
+      }),
+    })
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null)
+      setError(payload?.error ?? "Unable to save override.")
+      setSaving(false)
+      return
+    }
+
+    setSaving(false)
+    setIsEditing(false)
+    router.refresh()
+  }
+
+  const handleCancelEdit = () => {
+    setDraftAssetClass(effectiveAssetClass)
+    setIsEditing(false)
+  }
+
+  const handleReset = async (event: React.MouseEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!tickerNormalized) return
+    setSaving(true)
+    setError(null)
+
+    const response = await fetch("/api/overrides/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ticker: tickerNormalized }),
+    })
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null)
+      setError(payload?.error ?? "Unable to reset override.")
+      setSaving(false)
+      return
+    }
+
+    setSaving(false)
+    router.refresh()
+  }
+
+  const sourceLabel =
+    effectiveSource === "override"
+      ? "Override"
+      : effectiveSource === "fundProfile"
+        ? "FundProfile"
+        : effectiveSource === "securityType"
+          ? "SecurityType"
+          : effectiveSource === "holding"
+            ? "Holding"
+            : "Fallback"
+
+  const canEdit = Boolean(tickerNormalized)
+  const dropdownDisabled = !isEditing || !canEdit
 
   return (
     <>
@@ -74,20 +170,88 @@ export function HoldingBreakdownRow({
             </div>
           </div>
         </TableCell>
-        <TableCell>
+        <TableCell className="text-right tabular-nums">
           {holding.totalQuantity.toLocaleString("en-US", {
             maximumFractionDigits: 6,
           })}
         </TableCell>
-        <TableCell>
+        <TableCell className="text-right tabular-nums">
           {holding.price != null ? formatCurrency(holding.price) : "--"}
         </TableCell>
-        <TableCell className="text-left">
+        <TableCell className="text-right tabular-nums">
           {formatCurrency(holding.totalValue)}
         </TableCell>
         <TableCell>{holding.securityType ?? "--"}</TableCell>
         <TableCell>
-          <Badge variant="secondary">{bucketLabel}</Badge>
+          <div
+            className="flex flex-col gap-1"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center gap-2">
+              {isEditing ? (
+                <Select
+                  value={draftAssetClass}
+                  onChange={(event) => setDraftAssetClass(event.target.value)}
+                  disabled={dropdownDisabled || saving}
+                >
+                  <option value="us_equity">US Equity</option>
+                  <option value="intl_equity">International Equity</option>
+                  <option value="bonds">Bonds</option>
+                  <option value="cash">Cash</option>
+                  <option value="other">Other</option>
+                </Select>
+              ) : (
+                <span className="text-sm">{effectiveAssetClass.replace(/_/g, " ")}</span>
+              )}
+              {isEditing ? (
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleAssetClassSave}
+                    disabled={saving || dropdownDisabled}
+                  >
+                    Save
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleCancelEdit}
+                    disabled={saving}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsEditing(true)}
+                  disabled={saving || !canEdit}
+                >
+                  Edit
+                </Button>
+              )}
+            </div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>{sourceLabel}</span>
+              {hasOverride ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleReset}
+                  disabled={saving}
+                >
+                  Reset
+                </Button>
+              ) : null}
+            </div>
+            {error ? <span className="text-xs text-rose-600">{error}</span> : null}
+            {!tickerNormalized && effectiveAssetClass !== "cash" ? (
+              <span className="text-xs text-muted-foreground">Missing ticker</span>
+            ) : null}
+          </div>
         </TableCell>
       </TableRow>
       <TableRow className={open ? "bg-muted/10" : ""}>
@@ -101,26 +265,26 @@ export function HoldingBreakdownRow({
                 <TableHeader>
                   <TableRow>
                     <TableHead>Account</TableHead>
-                    <TableHead>Quantity</TableHead>
-                    <TableHead>Price</TableHead>
-                      <TableHead className="text-left">Value</TableHead>
+                    <TableHead className="text-right">Quantity</TableHead>
+                    <TableHead className="text-right">Price</TableHead>
+                    <TableHead className="text-right">Value</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {holding.breakdown.map((entry) => (
                     <TableRow key={entry.accountId}>
                       <TableCell>{entry.accountLabel}</TableCell>
-                      <TableCell>
+                      <TableCell className="text-right tabular-nums">
                         {entry.quantity.toLocaleString("en-US", {
                           maximumFractionDigits: 6,
                         })}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-right tabular-nums">
                         {entry.price != null
                           ? formatCurrency(entry.price)
                           : "--"}
                       </TableCell>
-                      <TableCell className="text-left">
+                      <TableCell className="text-right tabular-nums">
                         {formatCurrency(entry.value)}
                       </TableCell>
                     </TableRow>

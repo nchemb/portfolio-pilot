@@ -1,6 +1,19 @@
-import type { BrokerageAccount, Holding } from "@prisma/client"
+import type { BrokerageAccount } from "@prisma/client"
 
-type HoldingWithValue = Holding & { marketValue: number }
+type HoldingWithValue = {
+  id: string
+  brokerageAccountId: string
+  ticker: string | null
+  name: string
+  quantity: unknown
+  price: unknown
+  value: unknown
+  securityType: string | null
+  assetClass: string | null
+  geography: string | null
+  style: string | null
+  marketValue: number
+}
 
 export type AggregatedHoldingBreakdown = {
   accountId: string
@@ -16,6 +29,8 @@ export type AggregatedHolding = {
   name: string
   securityType: string | null
   assetClass: string | null
+  geography: string | null
+  style: string | null
   totalQuantity: number
   totalValue: number
   price: number | null
@@ -34,8 +49,7 @@ function accountDisplayName(account?: AccountLabel) {
   return account.mask ? `${label} ****${account.mask}` : label
 }
 
-function holdingKey(holding: Holding) {
-  if (holding.securityId) return `security:${holding.securityId}`
+function holdingKey(holding: HoldingWithValue) {
   const ticker = holding.ticker ?? "unknown"
   const name = holding.name ?? "Holding"
   const securityType = holding.securityType ?? "unknown"
@@ -66,6 +80,8 @@ export function aggregateHoldings(
         name: holding.name ?? "Holding",
         securityType: holding.securityType ?? null,
         assetClass: holding.assetClass ?? null,
+        geography: holding.geography ?? null,
+        style: holding.style ?? null,
         totalQuantity: quantity,
         totalValue: value,
         price: null,
@@ -89,6 +105,12 @@ export function aggregateHoldings(
     }
     if (!existing.assetClass && holding.assetClass) {
       existing.assetClass = holding.assetClass
+    }
+    if (!existing.geography && holding.geography) {
+      existing.geography = holding.geography
+    }
+    if (!existing.style && holding.style) {
+      existing.style = holding.style
     }
 
     existing.breakdown.push({

@@ -32,26 +32,10 @@ type PlaidExitError = {
   request_id?: string | null
 }
 
-type PlaidEventName = string
-
-declare global {
-  interface Window {
-    Plaid?: {
-      create: (config: {
-        token: string
-        onSuccess: (public_token: string, metadata: PlaidSuccessMetadata) => void
-        onExit?: (err?: PlaidExitError | null, metadata?: PlaidSuccessMetadata) => void
-        onEvent?: (eventName: PlaidEventName, metadata?: Record<string, unknown>) => void
-        onLoad?: () => void
-      }) => PlaidHandler
-    }
-  }
-}
-
 const PLAID_SCRIPT_SRC =
   "https://cdn.plaid.com/link/v2/stable/link-initialize.js"
 
-export function PlaidLinkButton() {
+export function PlaidLinkCashButton() {
   const router = useRouter()
   const handlerRef = useRef<PlaidHandler | null>(null)
   const openTimeRef = useRef<number | null>(null)
@@ -63,7 +47,7 @@ export function PlaidLinkButton() {
   const [isFlashCloseIssue, setIsFlashCloseIssue] = useState(false)
 
   useEffect(() => {
-    if (window.Plaid) {
+    if ((window as any).Plaid) {
       setReady(true)
       return
     }
@@ -89,23 +73,23 @@ export function PlaidLinkButton() {
 
   const createLinkHandler = useCallback(
     async (linkToken: string) => {
-      if (!window.Plaid) {
+      const Plaid = (window as any).Plaid
+      if (!Plaid) {
         setError("Plaid is not available yet.")
         return
       }
 
       handlerRef.current?.destroy()
-      handlerRef.current = window.Plaid.create({
+      handlerRef.current = Plaid.create({
         token: linkToken,
         onLoad: () => {
-          // Helpful when debugging “modal flashes then closes”
-          console.debug("[Plaid Link] onLoad")
+          console.debug("[Plaid Link Cash] onLoad")
         },
-        onEvent: (eventName, metadata) => {
-          console.debug("[Plaid Link] onEvent", eventName, metadata)
+        onEvent: (eventName: string, metadata: unknown) => {
+          console.debug("[Plaid Link Cash] onEvent", eventName, metadata)
         },
-        onSuccess: async (public_token, metadata) => {
-          const response = await fetch("/api/exchange", {
+        onSuccess: async (public_token: string, metadata: PlaidSuccessMetadata) => {
+          const response = await fetch("/api/exchange-cash", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ public_token, metadata }),
@@ -113,18 +97,15 @@ export function PlaidLinkButton() {
 
           if (!response.ok) {
             const payload = await response.json().catch(() => null)
-            setError(payload?.error ?? "Unable to sync brokerage.")
+            setError(payload?.error ?? "Unable to link cash account.")
             return
           }
 
-          // Success! Reset the force refresh flag
           setShouldForceRefresh(false)
           router.refresh()
         },
-        onExit: (err, metadata) => {
-          // In your normal browser, Plaid may auto-start a remembered phone flow then immediately exit.
-          // Often err.display_message is null; the useful fields are error_code / error_message.
-          console.warn("[Plaid Link] onExit", { err, metadata })
+        onExit: (err?: PlaidExitError | null, metadata?: PlaidSuccessMetadata) => {
+          console.warn("[Plaid Link Cash] onExit", { err, metadata })
 
           const errorCode = err?.error_code ?? undefined
           const errorMessage =
@@ -138,7 +119,6 @@ export function PlaidLinkButton() {
             setRateLimitNotice("Plaid rate limit reached—try again shortly.")
           }
 
-          // If modal exits with an error, force a fresh token on next attempt
           if (err) {
             setShouldForceRefresh(true)
           }
@@ -170,7 +150,7 @@ export function PlaidLinkButton() {
     setRateLimitNotice(null)
     setLoading(true)
 
-    const response = await fetch("/api/link-token", {
+    const response = await fetch("/api/link-token-cash", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ forceRefresh: shouldForceRefresh }),
@@ -212,8 +192,6 @@ export function PlaidLinkButton() {
   }, [handleConnect])
 
   const handleClearAndRetry = useCallback(() => {
-    // We can't programmatically clear Plaid's storage, but we can reset our state
-    // and force a fresh token, which sometimes helps
     setShouldForceRefresh(true)
     setIsFlashCloseIssue(false)
     setError(null)
@@ -228,7 +206,7 @@ export function PlaidLinkButton() {
       ) : null}
       <div className="flex gap-2">
         <Button onClick={handleConnect} disabled={!ready || loading}>
-          {loading ? "Connecting..." : "Connect via Plaid"}
+          {loading ? "Connecting..." : "Add Cash Account"}
         </Button>
         {error && (
           <Button onClick={handleTryAgain} disabled={!ready || loading} variant="outline">
@@ -237,7 +215,7 @@ export function PlaidLinkButton() {
         )}
       </div>
       <p className="text-muted-foreground text-sm">
-        Read-only access. We never trade or move money.
+        Link checking or savings accounts.
       </p>
       {isFlashCloseIssue ? (
         <div className="space-y-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm">
@@ -266,38 +244,7 @@ export function PlaidLinkButton() {
           </Button>
         </div>
       ) : error ? (
-        <div className="space-y-2">
-          <p className="text-sm text-rose-600">{error}</p>
-          <details className="text-xs text-muted-foreground">
-            <summary className="cursor-pointer hover:text-foreground">
-              Still not working? Clear Plaid browser data →
-            </summary>
-            <div className="mt-2 space-y-2 pl-2 border-l-2 border-muted">
-              <p className="font-medium">Chrome/Edge:</p>
-              <ol className="list-decimal list-inside space-y-1 pl-2">
-                <li>Open DevTools (F12 or Cmd+Option+I)</li>
-                <li>Go to Application tab → Storage</li>
-                <li>Expand &quot;Cookies&quot; and find &quot;cdn.plaid.com&quot;</li>
-                <li>Right-click → Clear</li>
-                <li>Also clear &quot;Local Storage&quot; and &quot;Session Storage&quot; for plaid.com domains</li>
-                <li>Refresh this page and try again</li>
-              </ol>
-              <p className="font-medium mt-3">Firefox:</p>
-              <ol className="list-decimal list-inside space-y-1 pl-2">
-                <li>Open DevTools (F12)</li>
-                <li>Go to Storage tab</li>
-                <li>Find and delete cookies/storage for plaid.com</li>
-                <li>Refresh and try again</li>
-              </ol>
-              <p className="font-medium mt-3">Safari:</p>
-              <ol className="list-decimal list-inside space-y-1 pl-2">
-                <li>Preferences → Privacy → Manage Website Data</li>
-                <li>Search &quot;plaid&quot; and remove all entries</li>
-                <li>Refresh and try again</li>
-              </ol>
-            </div>
-          </details>
-        </div>
+        <p className="text-sm text-rose-600">{error}</p>
       ) : null}
     </div>
   )

@@ -5,6 +5,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 model User {
@@ -13,9 +14,11 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  profile   Profile?
-  accounts  BrokerageAccount[]
-  plaidItems PlaidItem[]
+  profile      Profile?
+  accounts     BrokerageAccount[]
+  cashAccounts CashAccount[]
+  plaidItems   PlaidItem[]
+  overrides    UserSecurityOverride[]
 }
 
 model Profile {
@@ -24,6 +27,7 @@ model Profile {
   ageRange      String?
   riskTolerance String?  // low|medium|high
   timeHorizon   String?  // short|long
+  monthlyContributionCents Int? // default monthly contribution for rebalancer (in cents)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -54,6 +58,31 @@ model BrokerageAccount {
   updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CashAccount {
+  id           String   @id @default(cuid())
+  userId       String
+  institution  String?
+  name         String?
+  mask         String?
+  type         String?  // checking|savings
+  currency     String?
+  balance      Decimal  @db.Decimal(24, 8) @default(0)
+  lastSyncedAt DateTime?
+
+  // Plaid mapping (optional until a user connects)
+  plaidAccountId String? @unique
+  plaidItemId    String?
+
+  plaidItem PlaidItem? @relation(fields: [plaidItemId], references: [plaidItemId], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Holding {
@@ -96,7 +125,8 @@ model DailySnapshot {
   changeAbs   Decimal? @db.Decimal(24, 8)
   changePct   Decimal? @db.Decimal(10, 6)
 
-  createdAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  computedAt DateTime @default(now()) // When snapshot values were last computed
 
   brokerageAccount BrokerageAccount @relation(fields: [brokerageAccountId], references: [id], onDelete: Cascade)
 
@@ -118,10 +148,29 @@ model PlaidItem {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accounts BrokerageAccount[]
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accounts     BrokerageAccount[]
+  cashAccounts CashAccount[]
 
   @@index([userId])
+}
+
+// Migration: npx prisma migrate dev --name add_user_security_override
+model UserSecurityOverride {
+  id               String   @id @default(cuid())
+  userId           String
+  tickerNormalized String
+  assetClass       String   // us_equity|intl_equity|bonds|cash|other
+  geography        String?  // us|intl|global
+  style            String?  // growth|value|blend
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tickerNormalized])
+  @@index([userId])
+  @@index([tickerNormalized])
 }
 
 model Security {

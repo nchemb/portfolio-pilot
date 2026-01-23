@@ -15,7 +15,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
-import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
   TableBody,
@@ -31,17 +30,28 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs"
 import { PlaidLinkButton } from "@/components/plaid-link-button"
+import { PlaidLinkCashButton } from "@/components/plaid-link-cash-button"
 import { PlaidResyncButton } from "@/components/plaid-resync-button"
+import { CashResyncButton } from "@/components/cash-resync-button"
 import { OverviewRefreshButton } from "@/components/overview-refresh-button"
-import { HoldingBreakdownRow } from "@/components/holding-breakdown-row"
+import { HoldingsTable } from "@/components/holdings-table"
 import { RecommendedAllocationCard } from "@/components/recommended-allocation-card"
+import { PortfolioCopilotChat } from "@/components/portfolio-copilot-chat"
+import { StatCard } from "@/components/stat-card"
+import { DeleteBrokerageButton } from "@/components/delete-brokerage-button"
+import { DeleteCashAccountButton } from "@/components/delete-cash-account-button"
 import { aggregateHoldings } from "@/lib/holdings"
+import { normalizeTicker } from "@/lib/normalize"
 import {
   getRecommendedAllocation,
   calculateAllocationVariance,
   getRecommendationSummary,
   type AssetAllocation,
 } from "@/lib/allocation-recommendations"
+import {
+  getEffectiveClassification,
+  type ClassificationMaps,
+} from "@/lib/classification"
 
 export const dynamic = "force-dynamic"
 
@@ -125,40 +135,7 @@ function assetClassBucket(assetClass?: string | null) {
   return "other"
 }
 
-function normalizeTicker(ticker?: string | null) {
-  const trimmed = ticker?.trim()
-  return trimmed ? trimmed.toUpperCase() : null
-}
-
-function resolveAssetClass(
-  fundProfileByTicker: Map<string, { assetClass: string | null }>,
-  ticker?: string | null,
-  fallback?: string | null
-) {
-  const normalized = normalizeTicker(ticker)
-  const profile = normalized ? fundProfileByTicker.get(normalized) : undefined
-  return profile?.assetClass ?? fallback ?? null
-}
-
-function resolveGeography(
-  fundProfileByTicker: Map<string, { geography: string | null }>,
-  ticker?: string | null,
-  fallback?: string | null
-) {
-  const normalized = normalizeTicker(ticker)
-  const profile = normalized ? fundProfileByTicker.get(normalized) : undefined
-  return profile?.geography ?? fallback ?? null
-}
-
-function resolveStyle(
-  fundProfileByTicker: Map<string, { style: string | null }>,
-  ticker?: string | null,
-  fallback?: string | null
-) {
-  const normalized = normalizeTicker(ticker)
-  const profile = normalized ? fundProfileByTicker.get(normalized) : undefined
-  return profile?.style ?? fallback ?? null
-}
+// Classification logic now imported from @/lib/classification
 
 function isSameUtcDate(a: Date, b: Date): boolean {
   return (
@@ -237,8 +214,12 @@ export default async function DashboardPage({
   const activeTab = resolvedSearchParams?.tab ?? "overview"
   const saved = resolvedSearchParams?.saved === "1"
 
-  const [accounts, profile, user] = await Promise.all([
+  const [accounts, cashAccounts, profile, user] = await Promise.all([
     prisma.brokerageAccount.findMany({
+      where: { userId },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.cashAccount.findMany({
       where: { userId },
       orderBy: { createdAt: "asc" },
     }),
@@ -248,38 +229,65 @@ export default async function DashboardPage({
 
   const accountIds = accounts.map((a) => a.id)
 
-  const [holdings, latestSnapshot] = accountIds.length
+  // Fetch holdings and latest snapshot for each account
+  // We need per-account latest snapshots to properly aggregate daily change
+  const [holdings, latestSnapshots] = accountIds.length
     ? await Promise.all([
         prisma.holding.findMany({
           where: { brokerageAccountId: { in: accountIds } },
         }),
-        prisma.dailySnapshot.findFirst({
-          where: { brokerageAccountId: { in: accountIds } },
-          orderBy: { date: "desc" },
-        }),
+        // Get the most recent snapshot for each account
+        // Using a raw query approach via multiple queries grouped by account
+        Promise.all(
+          accountIds.map((accountId) =>
+            prisma.dailySnapshot.findFirst({
+              where: { brokerageAccountId: accountId },
+              orderBy: { date: "desc" },
+            })
+          )
+        ),
       ])
-    : [[], null]
+    : [[], []]
 
-  const fundProfiles =
-    holdings.length > 0
-      ? await prisma.fundProfile.findMany({
-          where: {
-            ticker: {
-              in: Array.from(
-                new Set(
-                  holdings
-                    .map((holding) => normalizeTicker(holding.ticker))
-                    .filter((ticker): ticker is string => Boolean(ticker))
-                )
-              ),
-            },
-          },
+  // Filter out null snapshots and find the most recent date across all accounts
+  const validSnapshots = latestSnapshots.filter(
+    (s): s is NonNullable<typeof s> => s !== null
+  )
+  const latestSnapshotDate = validSnapshots.length > 0
+    ? validSnapshots.reduce((latest, s) => (s.date > latest ? s.date : latest), validSnapshots[0].date)
+    : null
+  const latestSnapshot = validSnapshots.length > 0
+    ? validSnapshots.find((s) => s.date.getTime() === latestSnapshotDate?.getTime()) ?? validSnapshots[0]
+    : null
+
+  const tickers = Array.from(
+    new Set(
+      holdings
+        .map((holding) => normalizeTicker(holding.ticker ?? null))
+        .filter((ticker): ticker is string => Boolean(ticker))
+    )
+  )
+
+  const overrides = tickers.length
+    ? await prisma.userSecurityOverride.findMany({
+        where: { userId, tickerNormalized: { in: tickers } },
       })
     : []
 
-  const fundProfileByTicker = new Map(
-    fundProfiles.map((profile) => [profile.ticker.toUpperCase(), profile])
-  )
+  const fundProfiles = tickers.length
+    ? await prisma.fundProfile.findMany({
+        where: { ticker: { in: tickers } },
+      })
+    : []
+
+  const classificationMaps: ClassificationMaps = {
+    overrideMap: new Map(
+      overrides.map((override: { tickerNormalized: string; assetClass: string; geography: string | null; style: string | null }) => [normalizeTicker(override.tickerNormalized)!, override])
+    ),
+    fundProfileMap: new Map(
+      fundProfiles.map((profile: { ticker: string; assetClass: string | null; geography: string | null; style: string | null }) => [normalizeTicker(profile.ticker)!, profile])
+    ),
+  }
 
   const latestSyncAt = accounts.reduce<Date | null>((latest, acct) => {
     if (!acct.lastSyncedAt) return latest
@@ -289,29 +297,22 @@ export default async function DashboardPage({
 
   const holdingsWithValue = holdings
     .map((holding) => {
-      const assetClass = resolveAssetClass(
-        fundProfileByTicker,
-        holding.ticker,
-        holding.assetClass
+      const classification = getEffectiveClassification(
+        holding,
+        classificationMaps
       )
-      const geography = resolveGeography(
-        fundProfileByTicker,
-        holding.ticker,
-        holding.geography
-      )
-      const style = resolveStyle(
-        fundProfileByTicker,
-        holding.ticker,
-        holding.style
-      )
+      const normalizedTicker = normalizeTicker(holding.ticker ?? null)
 
       return {
         holding: {
           ...holding,
-          assetClass,
-          geography,
-          style,
+          assetClass: classification.assetClass,
+          geography: classification.geography,
+          style: classification.style,
         },
+        normalizedTicker,
+        classificationSource: classification.source,
+        needsReview: classification.needsReview,
         marketValue: holdingMarketValue(holding),
       }
     })
@@ -323,40 +324,89 @@ export default async function DashboardPage({
       marketValue: row.marketValue,
     })),
     accounts
-  ).map((holding) => ({
-    ...holding,
-    assetClass: resolveAssetClass(
-      fundProfileByTicker,
-      holding.ticker,
-      holding.assetClass
-    ),
-    geography: resolveGeography(
-      fundProfileByTicker,
-      holding.ticker,
-      holding.geography
-    ),
-    style: resolveStyle(
-      fundProfileByTicker,
-      holding.ticker,
-      holding.style
-    ),
-  }))
+  )
+
+  const aggregatedHoldingsWithClassification = aggregatedHoldings.map((holding) => {
+    const classification = getEffectiveClassification(
+      {
+        ticker: holding.ticker,
+        assetClass: holding.assetClass,
+        geography: holding.geography,
+        style: holding.style,
+        securityType: holding.securityType,
+      },
+      classificationMaps
+    )
+
+    return {
+      ...holding,
+      effectiveAssetClass: classification.assetClass,
+      effectiveSource: classification.source,
+      hasOverride: classification.source === "override",
+      needsReview: classification.needsReview,
+      tickerNormalized: normalizeTicker(holding.ticker ?? null),
+    }
+  })
 
   const totalHoldingsValue = holdingsWithValue.reduce(
     (sum, row) => sum + row.marketValue,
     0
   )
 
-  const snapshotTotalValue = latestSnapshot ? toNumber(latestSnapshot.totalValue) : null
-  const displayTotalValue = totalHoldingsValue > 0 ? totalHoldingsValue : snapshotTotalValue ?? 0
-  const totalsDelta =
-    snapshotTotalValue != null && totalHoldingsValue > 0
-      ? totalHoldingsValue - snapshotTotalValue
+  const totalRawValue = holdingsWithValue.reduce(
+    (sum, row) => sum + toNumber(row.holding.value),
+    0
+  )
+  const classifiedValue = holdingsWithValue.reduce(
+    (sum, row) => (row.needsReview ? sum : sum + toNumber(row.holding.value)),
+    0
+  )
+  const needsReviewValue = Math.max(totalRawValue - classifiedValue, 0)
+  const classifiedPct = totalRawValue > 0 ? classifiedValue / totalRawValue : 0
+  const needsReviewPct = totalRawValue > 0 ? needsReviewValue / totalRawValue : 0
+  const needsReviewHoldings = holdingsWithValue.filter(
+    (row) => row.needsReview
+  )
+
+  // Aggregate snapshot values across all accounts
+  const aggregatedSnapshotTotalValue = validSnapshots.reduce(
+    (sum, s) => sum + toNumber(s.totalValue),
+    0
+  )
+  const aggregatedChangeAbs = validSnapshots.reduce(
+    (sum, s) => (s.changeAbs != null ? sum + toNumber(s.changeAbs) : sum),
+    0
+  )
+  // For percentage, we need to compute based on previous total value
+  // If any snapshot has changeAbs but missing changePct, we handle gracefully
+  const hasAnyPreviousSnapshot = validSnapshots.some((s) => s.changeAbs != null)
+  const aggregatedPrevTotalValue = hasAnyPreviousSnapshot
+    ? aggregatedSnapshotTotalValue - aggregatedChangeAbs
+    : null
+  const aggregatedChangePct =
+    aggregatedPrevTotalValue != null && aggregatedPrevTotalValue > 0
+      ? aggregatedChangeAbs / aggregatedPrevTotalValue
       : null
+
+  const snapshotTotalValue = aggregatedSnapshotTotalValue > 0 ? aggregatedSnapshotTotalValue : null
   const snapshotMatchesSync =
     latestSnapshot && latestSyncAt ? isSameUtcDate(latestSnapshot.date, latestSyncAt) : false
   const snapshotMissingOrStale =
     totalHoldingsValue > 0 && (!latestSnapshot || !snapshotMatchesSync)
+
+  // Calculate total cash account balance (checking/savings accounts)
+  const totalCashAccountBalance = cashAccounts.reduce(
+    (sum, account) => sum + toNumber(account.balance),
+    0
+  )
+
+  // Total portfolio value includes holdings + cash accounts
+  const totalPortfolioValue = totalHoldingsValue + totalCashAccountBalance
+  const displayTotalValue = totalPortfolioValue > 0 ? totalPortfolioValue : snapshotTotalValue ?? 0
+  const totalsDelta =
+    snapshotTotalValue != null && totalHoldingsValue > 0
+      ? totalHoldingsValue - snapshotTotalValue
+      : null
 
   const allocationBuckets = holdingsWithValue.reduce(
     (acc, row) => {
@@ -373,21 +423,24 @@ export default async function DashboardPage({
     }
   )
 
+  // Add cash account balances to the cash bucket
+  allocationBuckets.cash += totalCashAccountBalance
+
   const allocationRows = (Object.keys(allocationBuckets) as Array<
     keyof typeof allocationBuckets
   >).map((bucket) => {
     const value = allocationBuckets[bucket]
-    const pct = totalHoldingsValue > 0 ? value / totalHoldingsValue : 0
+    const pct = totalPortfolioValue > 0 ? value / totalPortfolioValue : 0
     return { bucket, value, pct }
   }).sort((a, b) => b.value - a.value)
 
   // Calculate recommended allocation based on user profile
   const actualAllocation: AssetAllocation = {
-    us_equity: allocationBuckets.us_equity / (totalHoldingsValue || 1),
-    intl_equity: allocationBuckets.intl_equity / (totalHoldingsValue || 1),
-    bonds: allocationBuckets.bonds / (totalHoldingsValue || 1),
-    cash: allocationBuckets.cash / (totalHoldingsValue || 1),
-    other: allocationBuckets.other / (totalHoldingsValue || 1),
+    us_equity: allocationBuckets.us_equity / (totalPortfolioValue || 1),
+    intl_equity: allocationBuckets.intl_equity / (totalPortfolioValue || 1),
+    bonds: allocationBuckets.bonds / (totalPortfolioValue || 1),
+    cash: allocationBuckets.cash / (totalPortfolioValue || 1),
+    other: allocationBuckets.other / (totalPortfolioValue || 1),
   }
 
   const recommendedAllocation = getRecommendedAllocation({
@@ -406,40 +459,23 @@ export default async function DashboardPage({
     recommendedAllocation
   )
 
-  const allHoldings = aggregatedHoldings
+  const allHoldings = aggregatedHoldingsWithClassification
 
-  const summaryParts = {
-    us: allocationRows.find((row) => row.bucket === "us_equity")?.pct ?? 0,
-    intl: allocationRows.find((row) => row.bucket === "intl_equity")?.pct ?? 0,
-    bonds: allocationRows.find((row) => row.bucket === "bonds")?.pct ?? 0,
-    cash: allocationRows.find((row) => row.bucket === "cash")?.pct ?? 0,
-  }
-
-  const topPositions = allHoldings
-    .slice(0, 3)
-    .map((row) => row.ticker ?? row.name)
-    .join(", ")
-
-  const summaryText =
-    totalHoldingsValue > 0
-      ? `You're mostly in US equities (${formatPct(summaryParts.us)}). International (${formatPct(
-          summaryParts.intl
-        )}), bonds (${formatPct(summaryParts.bonds)}), cash (${formatPct(
-          summaryParts.cash
-        )}). Top positions: ${topPositions || "--"}.`
-      : accounts.length > 0
-        ? "Sync your brokerage to see a portfolio summary."
-        : "Add a brokerage account to see a portfolio summary."
+  // Calculate total value per brokerage account
+  const brokerageAccountTotals = new Map<string, number>()
+  holdingsWithValue.forEach((row) => {
+    const accountId = row.holding.brokerageAccountId
+    const currentTotal = brokerageAccountTotals.get(accountId) || 0
+    brokerageAccountTotals.set(accountId, currentTotal + row.marketValue)
+  })
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-10">
+    <div className="min-h-screen bg-background overflow-x-hidden">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
         <div className="flex items-start justify-between gap-4">
           <div className="flex flex-col gap-2">
             <h1 className="text-3xl font-semibold">Dashboard</h1>
-            <p className="text-muted-foreground">
-              A quick look at your portfolio health and preferences.
-            </p>
+            <p className="text-muted-foreground">Portfolio summary and insights.</p>
           </div>
         </div>
 
@@ -450,39 +486,83 @@ export default async function DashboardPage({
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="mt-4 space-y-6">
-            {accounts.length === 0 ? (
+          <TabsContent value="overview" className="mt-4 min-w-0">
+            {accounts.length === 0 && cashAccounts.length === 0 ? (
               <Card>
                 <CardHeader>
-                  <CardTitle>No brokerage connected</CardTitle>
+                  <CardTitle>Connect your accounts</CardTitle>
                   <CardDescription>
-                    Connect an account to view holdings, allocation, and daily
-                    performance.
+                    Link brokerage or cash accounts to unlock holdings, allocation, and performance insights.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Button asChild>
                     <Link href="/dashboard?tab=brokerage">
-                      Go to Brokerage
+                      Connect an account
                     </Link>
                   </Button>
                 </CardContent>
               </Card>
             ) : (
-              <>
-                <div className="flex items-center justify-between gap-4">
-                  <div className="text-sm text-muted-foreground">
-                    Keep your holdings up to date.
-                  </div>
-                  <OverviewRefreshButton />
+              <div className="space-y-6">
+                <div className="grid gap-4 lg:grid-cols-12">
+                  <StatCard
+                    className="lg:col-span-4"
+                    label="Total Value"
+                    value={(accounts.length || cashAccounts.length) ? formatCurrency(displayTotalValue) : "--"}
+                    helper={
+                      snapshotMatchesSync &&
+                      totalsDelta != null &&
+                      Math.abs(totalsDelta) > 0.01
+                        ? `Holdings sum differs by ${formatCurrency(totalsDelta)}`
+                        : ""
+                    }
+                  />
+
+                  <StatCard
+                    className="lg:col-span-4"
+                    label="Daily Change"
+                    value={
+                      hasAnyPreviousSnapshot
+                        ? formatCurrency(aggregatedChangeAbs)
+                        : "--"
+                    }
+                    badge={
+                      hasAnyPreviousSnapshot && aggregatedChangePct != null
+                        ? formatPct(aggregatedChangePct)
+                        : null
+                    }
+                    helper={
+                      hasAnyPreviousSnapshot
+                        ? `${aggregatedChangeAbs >= 0 ? "Up" : "Down"} ${formatCurrency(
+                          Math.abs(aggregatedChangeAbs)
+                        )}`
+                        : "No previous snapshot to compare"
+                    }
+                  />
+
+                  <Card className="lg:col-span-4">
+                    <CardHeader>
+                      <CardDescription>Actions</CardDescription>
+                      <CardTitle>Refresh holdings</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <OverviewRefreshButton />
+                      {latestSnapshot ? (
+                        <p className="text-xs text-muted-foreground">
+                          Last snapshot: {latestSnapshot.date.toLocaleDateString()}
+                        </p>
+                      ) : null}
+                    </CardContent>
+                  </Card>
                 </div>
 
                 {accounts.length > 0 && totalHoldingsValue === 0 ? (
                   <Card>
                     <CardHeader>
-                      <CardTitle>No holdings yet</CardTitle>
+                      <CardTitle>Sync in progress</CardTitle>
                       <CardDescription>
-                        Run a refresh to pull in your latest positions.
+                        We’re pulling in your latest positions. Check back in a few minutes.
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -491,213 +571,268 @@ export default async function DashboardPage({
                   </Card>
                 ) : null}
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <Card>
-                    <CardHeader>
-                      <CardDescription>Total Value</CardDescription>
-                      <CardTitle>
-                        {accounts.length ? formatCurrency(displayTotalValue) : "--"}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-1">
-                      {latestSnapshot ? (
-                        <p className="text-muted-foreground text-sm">
-                          Snapshot as of {latestSnapshot.date.toLocaleDateString()}
-                        </p>
-                      ) : (
-                        <Skeleton className="h-4 w-32" />
-                      )}
-
-                      {snapshotMissingOrStale ? (
-                        <p className="text-muted-foreground text-xs">
-                          Snapshot not available yet.
-                        </p>
-                      ) : null}
-
-                      {snapshotMatchesSync &&
-                      totalsDelta != null &&
-                      Math.abs(totalsDelta) > 0.01 ? (
-                        <p className="text-xs text-muted-foreground">
-                          Holdings sum differs by {formatCurrency(totalsDelta)}
-                        </p>
-                      ) : null}
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader>
-                      <CardDescription>Daily Change</CardDescription>
-                      <CardTitle className="flex flex-wrap items-baseline gap-x-2">
-                        {latestSnapshot?.changeAbs != null
-                          ? formatCurrency(toNumber(latestSnapshot.changeAbs))
-                          : "--"}
-                        <span className="text-sm text-muted-foreground">
-                          {latestSnapshot?.changePct != null
-                            ? formatPct(toNumber(latestSnapshot.changePct))
-                            : "--"}
-                        </span>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {latestSnapshot?.changeAbs != null ? (
-                        <p
-                          className={`text-sm ${
-                            toNumber(latestSnapshot.changeAbs) >= 0
-                              ? "text-emerald-600"
-                              : "text-rose-600"
-                          }`}
-                        >
-                          {toNumber(latestSnapshot.changeAbs) >= 0
-                            ? "Up"
-                            : "Down"} {formatCurrency(Math.abs(toNumber(latestSnapshot.changeAbs)))}
-                          {latestSnapshot?.changePct != null
-                            ? ` (${formatPct(Math.abs(toNumber(latestSnapshot.changePct)))})`
-                            : ""}
-                        </p>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">--</p>
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <Separator />
-
-                <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Current allocation breakdown</CardTitle>
-                      <CardDescription>
-                        Based on your current holdings.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      {totalHoldingsValue === 0 ? (
-                        <p className="text-muted-foreground text-sm">
-                          No holdings yet. Sync a brokerage account to see
-                          allocation details.
-                        </p>
-                      ) : (
-                        allocationRows.map((row) => (
-                          <div
-                            key={row.bucket}
-                            className="flex items-center justify-between"
-                          >
-                            <span className="text-sm">
-                              {ASSET_CLASS_LABELS[row.bucket]}
-                            </span>
-                            <span className="text-sm font-medium">
-                              {formatPct(row.pct)}
-                            </span>
-                          </div>
-                        ))
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Plain-English summary</CardTitle>
-                      <CardDescription>
-                        A quick narrative of your current mix.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-sm leading-relaxed text-muted-foreground">
-                        {summaryText}
-                      </p>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <RecommendedAllocationCard
-                  actualAllocation={actualAllocation}
-                  recommendedAllocation={recommendedAllocation}
-                  allocationVariance={allocationVariance}
-                  recommendationSummary={recommendationSummary}
-                  totalHoldingsValue={totalHoldingsValue}
-                  hasProfile={!!(profile?.ageRange || profile?.riskTolerance || profile?.timeHorizon)}
-                  ASSET_CLASS_LABELS={ASSET_CLASS_LABELS}
-                />
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>All holdings</CardTitle>
-                    <CardDescription>
-                      Full list of positions across linked accounts.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Ticker / Name</TableHead>
-                          <TableHead>Quantity</TableHead>
-                          <TableHead>Price</TableHead>
-                          <TableHead>Value</TableHead>
-                          <TableHead>Security Type</TableHead>
-                          <TableHead>Asset Class</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {allHoldings.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={6} className="text-center">
-                              No holdings to display.
-                            </TableCell>
-                          </TableRow>
+                <div className="grid gap-6 lg:grid-cols-12 min-w-0">
+                  <div className="lg:col-span-8 space-y-4 min-w-0">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Allocation (current)</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {totalPortfolioValue === 0 ? (
+                          <p className="text-muted-foreground text-sm">
+                            No holdings yet. Sync a brokerage or cash account to see
+                            allocation details.
+                          </p>
                         ) : (
-                          allHoldings.map((holding) => {
-                            const bucket = assetClassBucket(holding.assetClass)
-                            return (
-                              <HoldingBreakdownRow
-                                key={holding.key}
-                                holding={holding}
-                                bucketLabel={ASSET_CLASS_LABELS[bucket]}
-                              />
-                            )
-                          })
+                          allocationRows.map((row) => (
+                            <div
+                              key={row.bucket}
+                              className="flex items-center justify-between"
+                            >
+                              <span className="text-sm">
+                                {ASSET_CLASS_LABELS[row.bucket]}
+                              </span>
+                              <span className="text-sm font-medium">
+                                {formatPct(row.pct)}
+                              </span>
+                            </div>
+                          ))
                         )}
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                </Card>
-              </>
+                      </CardContent>
+                    </Card>
+
+                    <RecommendedAllocationCard
+                      actualAllocation={actualAllocation}
+                      recommendedAllocation={recommendedAllocation}
+                      allocationVariance={allocationVariance}
+                      recommendationSummary={recommendationSummary}
+                      totalHoldingsValue={totalPortfolioValue}
+                      hasProfile={!!(profile?.ageRange || profile?.riskTolerance || profile?.timeHorizon)}
+                      ASSET_CLASS_LABELS={ASSET_CLASS_LABELS}
+                    />
+                  </div>
+
+                  <div className="lg:col-span-4 lg:sticky lg:top-6 lg:self-start min-w-0">
+                    <PortfolioCopilotChat />
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>All holdings</CardTitle>
+                      <CardDescription>
+                        Full list of positions across linked accounts.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <HoldingsTable holdings={allHoldings} />
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Classification coverage</CardTitle>
+                      <CardDescription>
+                        Review holdings missing a trusted classification.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex flex-wrap items-center gap-4 text-sm">
+                        <div>
+                          Classified:{" "}
+                          <span className="font-medium">
+                            {formatPct(classifiedPct)}
+                          </span>
+                        </div>
+                        <div>
+                          Needs review:{" "}
+                          <span className="font-medium">
+                            {formatPct(needsReviewPct)}
+                          </span>{" "}
+                          <span className="text-muted-foreground">
+                            ({formatCurrency(needsReviewValue)})
+                          </span>
+                        </div>
+                      </div>
+
+                      {needsReviewHoldings.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                          All holdings are classified.
+                        </p>
+                      ) : (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Holding</TableHead>
+                              <TableHead>Ticker</TableHead>
+                              <TableHead>Value</TableHead>
+                              <TableHead>Status</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {needsReviewHoldings.map((row) => (
+                              <TableRow key={row.holding.id}>
+                                <TableCell>
+                                  <div className="text-sm font-medium">
+                                    {row.holding.name}
+                                  </div>
+                                </TableCell>
+                                  <TableCell className="text-muted-foreground text-sm">
+                                    {row.normalizedTicker ?? "--"}
+                                  </TableCell>
+                                <TableCell className="text-sm">
+                                  {formatCurrency(toNumber(row.holding.value))}
+                                </TableCell>
+                                <TableCell>
+                                  {row.classificationSource === "override" ? (
+                                    <span className="text-xs text-emerald-600">
+                                      Overridden
+                                    </span>
+                                  ) : row.needsReview ? (
+                                    row.normalizedTicker ? (
+                                      <span className="text-xs text-rose-600">
+                                        Needs review
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs text-muted-foreground">
+                                        Needs review (no ticker)
+                                      </span>
+                                    )
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">
+                                      Classified
+                                    </span>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
             )}
           </TabsContent>
 
           <TabsContent value="brokerage" className="mt-4 space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Connect a brokerage</CardTitle>
+                <CardTitle className="flex flex-wrap items-center gap-2">
+                  Connect a brokerage
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Beta
+                  </span>
+                </CardTitle>
                 <CardDescription>
-                  Link a read-only account to sync holdings and performance.
+                  Link accounts to unlock holdings, allocation, and performance insights.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <PlaidLinkButton />
+                <p className="text-xs text-muted-foreground">
+                  Note: Some institutions may not connect reliably yet.
+                </p>
                 {accounts.length > 0 && (
                   <div className="space-y-3">
                     <Separator />
                     <div className="space-y-2">
-                      {accounts.map((acct) => (
-                        <div
-                          key={acct.id}
-                          className="flex items-center justify-between rounded-md border px-3 py-2"
-                        >
-                          <div>
-                            <div className="flex items-center gap-2 text-sm font-medium">
-                              <span>{acct.institution ?? "Brokerage"}</span>
+                      {accounts.map((acct) => {
+                        const accountTotal = brokerageAccountTotals.get(acct.id) || 0
+                        return (
+                          <div
+                            key={acct.id}
+                            className="flex items-center justify-between rounded-md border px-3 py-2"
+                          >
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 text-sm font-medium">
+                                <span>{acct.institution ?? "Brokerage"}</span>
+                              </div>
+                              <div className="text-muted-foreground text-xs">
+                                {acct.name ?? "Account"}
+                                {acct.mask ? ` ****${acct.mask}` : ""}
+                              </div>
+                              {accountTotal > 0 && (
+                                <div className="mt-1 text-sm font-semibold">
+                                  {formatCurrency(accountTotal)}
+                                </div>
+                              )}
                             </div>
-                            <div className="text-muted-foreground text-xs">
-                              {acct.name ?? "Account"}
-                              {acct.mask ? ` ****${acct.mask}` : ""}
+                            <div className="flex items-center gap-2">
+                              <PlaidResyncButton
+                                brokerageAccountId={acct.id}
+                              />
+                              <DeleteBrokerageButton
+                                brokerageAccountId={acct.id}
+                                institutionName={acct.institution}
+                                accountName={acct.name}
+                              />
                             </div>
                           </div>
-                          <PlaidResyncButton
-                            brokerageAccountId={acct.id}
-                          />
-                        </div>
-                      ))}
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex flex-wrap items-center gap-2">
+                  Add a cash account
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Beta
+                  </span>
+                </CardTitle>
+                <CardDescription>
+                  Link checking or savings accounts to include cash in your portfolio allocation.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <PlaidLinkCashButton />
+                <p className="text-xs text-muted-foreground">
+                  Cash account balances are added to your portfolio's "Cash" allocation.
+                </p>
+                {cashAccounts.length > 0 && (
+                  <div className="space-y-3">
+                    <Separator />
+                    <div className="space-y-2">
+                      {cashAccounts.map((acct) => {
+                        const balance = toNumber(acct.balance)
+                        return (
+                          <div
+                            key={acct.id}
+                            className="flex items-center justify-between rounded-md border px-3 py-2"
+                          >
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 text-sm font-medium">
+                                <span>{acct.institution ?? "Cash Account"}</span>
+                              </div>
+                              <div className="text-muted-foreground text-xs">
+                                {acct.name ?? "Account"}
+                                {acct.mask ? ` ****${acct.mask}` : ""}
+                                {acct.type ? ` (${acct.type})` : ""}
+                              </div>
+                              {balance > 0 && (
+                                <div className="mt-1 text-sm font-semibold">
+                                  {formatCurrency(balance)}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <CashResyncButton cashAccountId={acct.id} />
+                              <DeleteCashAccountButton
+                                cashAccountId={acct.id}
+                                institutionName={acct.institution}
+                                accountName={acct.name}
+                              />
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 )}
