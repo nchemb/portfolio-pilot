@@ -32,11 +32,6 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  // Workaround for Next.js 16 middleware tracing issue on Vercel
-  // See: https://github.com/vercel/next.js/issues/77123
-  outputFileTracingIncludes: {
-    "/middleware": ["./node_modules/@clerk/nextjs/**/*"],
-  },
   async headers() {
     return [
       {
