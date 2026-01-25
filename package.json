@@ -2,11 +2,16 @@
   "name": "portfolio-copilot",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
+    "postinstall": "prisma generate",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "clean-build": "rm -rf .next node_modules && npm ci && npm run build"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.36.8",
