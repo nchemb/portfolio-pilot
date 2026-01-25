@@ -377,11 +377,11 @@ export default async function DashboardPage({
     ),
   }
 
-  const latestSyncAt = accounts.reduce<Date | null>((latest, acct) => {
+  const latestSyncAt = accounts.reduce((latest: Date | null, acct: { lastSyncedAt: Date | null }) => {
     if (!acct.lastSyncedAt) return latest
     if (!latest || acct.lastSyncedAt > latest) return acct.lastSyncedAt
     return latest
-  }, null)
+  }, null as Date | null)
 
   const holdingsWithValue = holdings
     .map((holding: (typeof holdings)[number]) => {

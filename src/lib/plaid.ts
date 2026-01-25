@@ -135,9 +135,9 @@ export const plaidClient = new Proxy({} as PlaidApi, {
   get(target, prop) {
     const client = getPlaidClient()
     if (typeof prop === "symbol") {
-      return client[prop as keyof PlaidApi]
+      return client[prop as unknown as keyof PlaidApi]
     }
-    const value = client[prop as keyof PlaidApi]
+    const value = client[prop as unknown as keyof PlaidApi]
     return typeof value === "function" ? value.bind(client) : value
   },
 })
