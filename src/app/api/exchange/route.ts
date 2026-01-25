@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@clerk/nextjs/server"
+import { type Prisma } from "@prisma/client"
 
 import { prisma } from "@/lib/prisma"
 import { plaidClient, plaidConfigReady } from "@/lib/plaid"
@@ -81,7 +82,7 @@ export async function POST(request: Request) {
       create: { id: userId, email: null },
     })
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const plaidItem = await tx.plaidItem.upsert({
         where: { plaidItemId: itemId },
         update: {
