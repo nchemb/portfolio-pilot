@@ -911,7 +911,7 @@ export default async function DashboardPage({
                     <div className="space-y-4">
                       <PlaidLinkCashButton />
                       <p className="text-xs text-muted-foreground">
-                        Cash account balances are added to your portfolio's "Cash" allocation.
+                        Cash account balances are added to your portfolio&apos;s &quot;Cash&quot; allocation.
                       </p>
                       {cashAccounts.length > 0 && (
                         <div className="space-y-3">

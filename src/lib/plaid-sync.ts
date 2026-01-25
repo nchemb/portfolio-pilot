@@ -41,7 +41,7 @@ type BrokerageAccountWithPlaid = Prisma.BrokerageAccountGetPayload<{
   include: { plaidItem: true }
 }>
 
-type FundProfileRecord = Prisma.FundProfileGetPayload<{}>
+type FundProfileRecord = Prisma.FundProfileGetPayload<Prisma.FundProfileDefaultArgs>
 
 type SyncOptions = {
   userId: string

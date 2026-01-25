@@ -254,7 +254,7 @@ export function PortfolioCopilotChat() {
               <div className="text-5xl mb-3">🤖</div>
               <h3 className="text-base font-semibold mb-1.5">Ask me anything</h3>
               <p className="text-xs text-muted-foreground mb-4 max-w-xs px-4">
-                I'll answer using your real portfolio data—no made-up numbers.
+                I&apos;ll answer using your real portfolio data—no made-up numbers.
               </p>
               <div className="flex flex-wrap gap-1.5 justify-center max-w-xs px-2">
                 {quickPrompts.map((prompt, i) => (

@@ -15,7 +15,7 @@ export async function POST() {
     const email = user?.emailAddresses?.[0]?.emailAddress
 
     // Get or create Stripe customer with race condition protection
-    let dbUser = await prisma.user.findUnique({
+    const dbUser = await prisma.user.findUnique({
       where: { id: userId },
       select: { stripeCustomerId: true },
     })

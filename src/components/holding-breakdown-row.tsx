@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useState } from "react"
 import { ChevronRight } from "lucide-react"
 import { useRouter } from "next/navigation"
 
@@ -46,11 +46,10 @@ export function HoldingBreakdownRow({
   const [isEditing, setIsEditing] = useState(false)
   const [draftAssetClass, setDraftAssetClass] = useState(effectiveAssetClass)
 
-  useEffect(() => {
-    if (!isEditing) {
-      setDraftAssetClass(effectiveAssetClass)
-    }
-  }, [effectiveAssetClass, isEditing])
+  const handleStartEdit = useCallback(() => {
+    setDraftAssetClass(effectiveAssetClass)
+    setIsEditing(true)
+  }, [effectiveAssetClass])
 
   const toggle = useCallback(() => {
     setOpen((prev) => !prev)
@@ -238,7 +237,7 @@ export function HoldingBreakdownRow({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setIsEditing(true)}
+                  onClick={handleStartEdit}
                   disabled={saving || !canEdit}
                 >
                   Edit

@@ -87,7 +87,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ link_token: token })
   } catch (error) {
     // Plaid SDK uses axios under the hood; surface useful error details in dev.
-    let plaidError: any = null
+    let plaidError: Record<string, unknown> | null = null
 
     if (isAxiosError(error)) {
       plaidError = error.response?.data ?? {
@@ -104,7 +104,10 @@ export async function POST(request: Request) {
     console.error("Plaid link token error:", plaidError)
 
     // If Plaid rate limits us, return a 429 so the client can back off instead of instantly closing.
-    const errorCode = plaidError?.error_code
+    const errorCode =
+      plaidError && typeof plaidError === "object"
+        ? (plaidError as { error_code?: string }).error_code
+        : undefined
     if (errorCode === "RATE_LIMIT_EXCEEDED" || errorCode === "RATE_LIMIT") {
       const retryAfterSeconds = 60
       return NextResponse.json(

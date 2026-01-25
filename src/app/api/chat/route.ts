@@ -64,6 +64,22 @@ type FactsUsed = {
   rebalanceSuggestions?: Array<{ bucket: string; buyAmount: number; tickers: string[] }>
 }
 
+type PortfolioSummary = {
+  asOf: string
+  totalValue: number
+  allocation: Record<string, { pct: number }>
+  holdings: Array<{ ticker: string | null; name: string; value: number }>
+}
+
+type RebalancePlan = {
+  targetAllocation?: Record<string, number>
+  suggestions?: Array<{
+    bucket: string
+    recommendedBuyAmount?: number | null
+    recommendedTickers?: Array<{ ticker: string }>
+  }>
+}
+
 // ===== FORMATTING HELPERS =====
 
 function formatMoney(n: number): string {
@@ -87,8 +103,8 @@ function formatPct(n: number): string {
  * Returns only positive gaps (underweight positions), sorted desc
  */
 function computeBiggestGaps(
-  portfolioSummary: any,
-  rebalancePlan: any
+  portfolioSummary: PortfolioSummary,
+  rebalancePlan: RebalancePlan | null
 ): Array<{ bucket: string; currentPct: number; targetPct: number; gapPct: number }> {
   if (!rebalancePlan?.targetAllocation) return []
 
@@ -121,7 +137,7 @@ function computeBiggestGaps(
 /**
  * Build deterministic buy list from rebalance plan
  */
-function buildDeterministicBuys(rebalancePlan: any): Array<{
+function buildDeterministicBuys(rebalancePlan: RebalancePlan | null): Array<{
   bucket: string
   ticker: string
   amount: number
@@ -160,7 +176,7 @@ function buildBecauseBullets(
     targetPct: number
     gapPct: number
   }>,
-  rebalancePlan: any
+  rebalancePlan: RebalancePlan | null
 ): string[] {
   const bullets: string[] = []
 
@@ -173,11 +189,11 @@ function buildBecauseBullets(
       .replace(/\b\w/g, (c) => c.toUpperCase())
 
     // Find tickers for this bucket
-    const suggestion = rebalancePlan.suggestions?.find(
-      (s: any) => s.bucket === gap.bucket
+    const suggestion = rebalancePlan?.suggestions?.find(
+      (s) => s.bucket === gap.bucket
     )
     const tickers =
-      suggestion?.recommendedTickers?.map((t: any) => t.ticker).join(", ") || "this bucket"
+      suggestion?.recommendedTickers?.map((t) => t.ticker).join(", ") || "this bucket"
 
     bullets.push(
       `${bucketTitle} is ${formatPct(gap.gapPct)} below target (${formatPct(gap.currentPct)} vs ${formatPct(gap.targetPct)}), so most goes to ${tickers}`
@@ -296,8 +312,8 @@ function isRebalanceQuery(message: string): boolean {
  * Build system prompt for JSON output
  */
 function buildSystemPrompt(
-  portfolioSummary: any,
-  rebalancePlan: any | null,
+  portfolioSummary: PortfolioSummary,
+  rebalancePlan: RebalancePlan | null,
   userQuery: string
 ): string {
   const lines = [
@@ -352,14 +368,14 @@ function buildSystemPrompt(
  * Extract facts used from portfolio summary and rebalance plan
  */
 function extractFactsUsed(
-  portfolioSummary: any,
-  rebalancePlan: any | null
+  portfolioSummary: PortfolioSummary,
+  rebalancePlan: RebalancePlan | null
 ): FactsUsed {
   const factsUsed: FactsUsed = {
     asOf: portfolioSummary.asOf,
     totalValue: portfolioSummary.totalValue,
     allocation: Object.entries(portfolioSummary.allocation).reduce(
-      (acc, [bucket, data]: [string, any]) => {
+      (acc, [bucket, data]) => {
         acc[bucket] = data.pct // already 0-100
         return acc
       },
@@ -367,7 +383,7 @@ function extractFactsUsed(
     ),
     topHoldings: portfolioSummary.holdings
       .slice(0, 3)
-      .map((h: any) => ({
+      .map((h) => ({
         ticker: h.ticker,
         name: h.name,
         value: h.value,
@@ -386,10 +402,11 @@ function extractFactsUsed(
       {} as Record<string, number>
     )
 
-    factsUsed.rebalanceSuggestions = rebalancePlan.suggestions.map((s: any) => ({
+    const suggestions = rebalancePlan.suggestions ?? []
+    factsUsed.rebalanceSuggestions = suggestions.map((s) => ({
       bucket: s.bucket,
-      buyAmount: s.recommendedBuyAmount,
-      tickers: s.recommendedTickers.map((t: any) => t.ticker),
+      buyAmount: s.recommendedBuyAmount ?? 0,
+      tickers: (s.recommendedTickers ?? []).map((t) => t.ticker),
     }))
   }
 
@@ -401,11 +418,11 @@ function extractFactsUsed(
  */
 function parseStructuredJSON(
   content: string,
-  portfolioSummary: any,
-  rebalancePlan: any | null
+  portfolioSummary: PortfolioSummary,
+  rebalancePlan: RebalancePlan | null
 ): StructuredChatReply {
   try {
-    const parsed = JSON.parse(content)
+    const parsed = JSON.parse(content) as Partial<StructuredChatReply>
 
     // Validate required fields
     if (!parsed.intent || !parsed.headline || !parsed.summary) {
@@ -437,8 +454,8 @@ function parseStructuredJSON(
  * Build fallback structured response
  */
 function buildFallbackStructured(
-  portfolioSummary: any,
-  rebalancePlan: any | null
+  portfolioSummary: PortfolioSummary,
+  rebalancePlan: RebalancePlan | null
 ): StructuredChatReply {
   if (rebalancePlan) {
     const buys = buildDeterministicBuys(rebalancePlan)
@@ -453,7 +470,7 @@ function buildFallbackStructured(
       because,
       allocation: {
         current: Object.entries(portfolioSummary.allocation).reduce(
-          (acc, [bucket, data]: [string, any]) => {
+          (acc, [bucket, data]) => {
             acc[bucket] = data.pct
             return acc
           },
@@ -529,7 +546,7 @@ export async function POST(request: NextRequest) {
 
     let usedRebalance = false
     let usedContribution: number | undefined = undefined
-    let rebalancePlan: any | null = null
+    let rebalancePlan: RebalancePlan | null = null
 
     if (isRebalanceRequest) {
       // Determine contribution amount
@@ -629,7 +646,7 @@ export async function POST(request: NextRequest) {
     const rawContent = completion.choices[0]?.message?.content || "{}"
 
     // 10. PARSE STRUCTURED JSON
-    let structured = parseStructuredJSON(rawContent, portfolioSummary, rebalancePlan)
+    const structured = parseStructuredJSON(rawContent, portfolioSummary, rebalancePlan)
 
     // 11. ENHANCE STRUCTURED WITH DETERMINISTIC DATA
     if (structured.intent === "rebalance_plan" && rebalancePlan) {
@@ -649,7 +666,7 @@ export async function POST(request: NextRequest) {
         const gaps = computeBiggestGaps(portfolioSummary, rebalancePlan)
         structured.allocation = {
           current: Object.entries(portfolioSummary.allocation).reduce(
-            (acc, [bucket, data]: [string, any]) => {
+            (acc, [bucket, data]) => {
               acc[bucket] = data.pct
               return acc
             },

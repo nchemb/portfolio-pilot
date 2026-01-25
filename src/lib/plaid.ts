@@ -134,7 +134,10 @@ export function _resetPlaidClient(): void {
 export const plaidClient = new Proxy({} as PlaidApi, {
   get(target, prop) {
     const client = getPlaidClient()
-    const value = (client as any)[prop]
+    if (typeof prop === "symbol") {
+      return client[prop as keyof PlaidApi]
+    }
+    const value = client[prop as keyof PlaidApi]
     return typeof value === "function" ? value.bind(client) : value
   },
 })

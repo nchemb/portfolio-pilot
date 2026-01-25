@@ -55,7 +55,9 @@ export function PlaidLinkButton() {
   const router = useRouter()
   const handlerRef = useRef<PlaidHandler | null>(null)
   const openTimeRef = useRef<number | null>(null)
-  const [ready, setReady] = useState(false)
+  const [ready, setReady] = useState(
+    () => typeof window !== "undefined" && Boolean(window.Plaid)
+  )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [rateLimitNotice, setRateLimitNotice] = useState<string | null>(null)
@@ -63,10 +65,7 @@ export function PlaidLinkButton() {
   const [isFlashCloseIssue, setIsFlashCloseIssue] = useState(false)
 
   useEffect(() => {
-    if (window.Plaid) {
-      setReady(true)
-      return
-    }
+    if (window.Plaid) return
 
     const script = document.createElement("script")
     script.src = PLAID_SCRIPT_SRC

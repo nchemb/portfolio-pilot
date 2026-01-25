@@ -93,7 +93,7 @@ export async function POST(request: Request) {
     setCachedLinkToken(userId, token)
     return NextResponse.json({ link_token: token })
   } catch (error) {
-    let plaidError: any = null
+    let plaidError: Record<string, unknown> | null = null
 
     if (isAxiosError(error)) {
       plaidError = error.response?.data ?? {
@@ -109,7 +109,10 @@ export async function POST(request: Request) {
 
     console.error("Plaid link token (cash) error:", plaidError)
 
-    const errorCode = plaidError?.error_code
+    const errorCode =
+      plaidError && typeof plaidError === "object"
+        ? (plaidError as { error_code?: string }).error_code
+        : undefined
     if (errorCode === "RATE_LIMIT_EXCEEDED" || errorCode === "RATE_LIMIT") {
       const retryAfterSeconds = 60
       return NextResponse.json(

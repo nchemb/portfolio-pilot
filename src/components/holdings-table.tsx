@@ -90,7 +90,7 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
       return sortDirection === "asc" ? result : -result
     })
     return next
-  }, [holdings, sortKey, sortDirection])
+  }, [filteredHoldings, sortKey, sortDirection])
 
   const handleSort = (key: SortKey) => {
     if (key === sortKey) {

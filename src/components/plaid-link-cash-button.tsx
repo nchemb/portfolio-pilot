@@ -32,6 +32,22 @@ type PlaidExitError = {
   request_id?: string | null
 }
 
+type PlaidEventName = string
+
+declare global {
+  interface Window {
+    Plaid?: {
+      create: (config: {
+        token: string
+        onSuccess: (public_token: string, metadata: PlaidSuccessMetadata) => void
+        onExit?: (err?: PlaidExitError | null, metadata?: PlaidSuccessMetadata) => void
+        onEvent?: (eventName: PlaidEventName, metadata?: Record<string, unknown>) => void
+        onLoad?: () => void
+      }) => PlaidHandler
+    }
+  }
+}
+
 const PLAID_SCRIPT_SRC =
   "https://cdn.plaid.com/link/v2/stable/link-initialize.js"
 
@@ -39,7 +55,9 @@ export function PlaidLinkCashButton() {
   const router = useRouter()
   const handlerRef = useRef<PlaidHandler | null>(null)
   const openTimeRef = useRef<number | null>(null)
-  const [ready, setReady] = useState(false)
+  const [ready, setReady] = useState(
+    () => typeof window !== "undefined" && Boolean(window.Plaid)
+  )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [rateLimitNotice, setRateLimitNotice] = useState<string | null>(null)
@@ -47,10 +65,7 @@ export function PlaidLinkCashButton() {
   const [isFlashCloseIssue, setIsFlashCloseIssue] = useState(false)
 
   useEffect(() => {
-    if ((window as any).Plaid) {
-      setReady(true)
-      return
-    }
+    if (window.Plaid) return
 
     const script = document.createElement("script")
     script.src = PLAID_SCRIPT_SRC
@@ -73,7 +88,7 @@ export function PlaidLinkCashButton() {
 
   const createLinkHandler = useCallback(
     async (linkToken: string) => {
-      const Plaid = (window as any).Plaid
+      const Plaid = window.Plaid
       if (!Plaid) {
         setError("Plaid is not available yet.")
         return
@@ -85,7 +100,7 @@ export function PlaidLinkCashButton() {
         onLoad: () => {
           console.debug("[Plaid Link Cash] onLoad")
         },
-        onEvent: (eventName: string, metadata: unknown) => {
+        onEvent: (eventName, metadata) => {
           console.debug("[Plaid Link Cash] onEvent", eventName, metadata)
         },
         onSuccess: async (public_token: string, metadata: PlaidSuccessMetadata) => {
