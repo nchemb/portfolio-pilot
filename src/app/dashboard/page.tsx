@@ -315,7 +315,7 @@ export default async function DashboardPage({
     redirect("/paywall")
   }
 
-  const accountIds = accounts.map((a) => a.id)
+  const accountIds = accounts.map((a: { id: string }) => a.id)
 
   // Fetch holdings and latest snapshot for each account
   // We need per-account latest snapshots to properly aggregate daily change
