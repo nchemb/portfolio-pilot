@@ -327,7 +327,7 @@ export default async function DashboardPage({
         // Get the most recent snapshot for each account
         // Using a raw query approach via multiple queries grouped by account
         Promise.all(
-          accountIds.map((accountId) =>
+          accountIds.map((accountId: string) =>
             prisma.dailySnapshot.findFirst({
               where: { brokerageAccountId: accountId },
               orderBy: { date: "desc" },
