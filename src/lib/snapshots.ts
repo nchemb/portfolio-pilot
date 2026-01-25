@@ -1,4 +1,5 @@
-import { Prisma, type DailySnapshot } from "@prisma/client"
+import { type DailySnapshot } from "@prisma/client"
+import { Decimal } from "@prisma/client/runtime/library"
 
 import { prisma } from "@/lib/prisma"
 
@@ -15,8 +16,8 @@ export function normalizeUtcDay(date: Date): Date {
 /**
  * Converts a value to Prisma Decimal, handling various input types.
  */
-function toDecimal(value?: number | null): Prisma.Decimal {
-  return new Prisma.Decimal(value ?? 0)
+function toDecimal(value?: number | null): Decimal {
+  return new Decimal(value ?? 0)
 }
 
 /**
@@ -44,12 +45,12 @@ function toNumber(value: unknown): number {
  */
 export async function computeAccountTotalValue(
   accountId: string
-): Promise<Prisma.Decimal> {
+): Promise<Decimal> {
   const holdings = await prisma.holding.findMany({
     where: { brokerageAccountId: accountId },
   })
 
-  let total = new Prisma.Decimal(0)
+  let total = new Decimal(0)
 
   for (const holding of holdings) {
     const directValue = toNumber(holding.value)
@@ -59,9 +60,9 @@ export async function computeAccountTotalValue(
 
     // Prefer direct value if sane, otherwise use derived
     if (Number.isFinite(directValue) && directValue > 0) {
-      total = total.plus(new Prisma.Decimal(directValue))
+      total = total.plus(new Decimal(directValue))
     } else if (Number.isFinite(derivedValue) && derivedValue > 0) {
-      total = total.plus(new Prisma.Decimal(derivedValue))
+      total = total.plus(new Decimal(derivedValue))
     }
     // else contribute 0
   }
@@ -110,8 +111,8 @@ export async function upsertDailySnapshotForAccount(
   })
 
   // Calculate change metrics
-  let changeAbs: Prisma.Decimal | null = null
-  let changePct: Prisma.Decimal | null = null
+  let changeAbs: Decimal | null = null
+  let changePct: Decimal | null = null
 
   if (previousSnapshot) {
     const prevValue = previousSnapshot.totalValue

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@clerk/nextjs/server"
-import { Prisma } from "@prisma/client"
+import { Decimal } from "@prisma/client/runtime/library"
 
 import { prisma } from "@/lib/prisma"
 import { plaidClient, plaidConfigReady } from "@/lib/plaid"
@@ -20,7 +20,7 @@ type PlaidMetadata = {
 }
 
 function toDecimal(value?: number | null) {
-  return new Prisma.Decimal(value ?? 0)
+  return new Decimal(value ?? 0)
 }
 
 export async function POST(request: Request) {

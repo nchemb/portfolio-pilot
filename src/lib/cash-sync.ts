@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client"
+import { Decimal } from "@prisma/client/runtime/library"
 
 import { plaidClient } from "@/lib/plaid"
 import { prisma } from "@/lib/prisma"
@@ -36,7 +37,7 @@ type SyncOptions = {
 }
 
 function toDecimal(value?: number | null) {
-  return new Prisma.Decimal(value ?? 0)
+  return new Decimal(value ?? 0)
 }
 
 function parsePlaidError(error: PlaidError) {
