@@ -168,13 +168,14 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
               Security Type <span className="text-[10px] text-muted-foreground">{sortIndicator("securityType")}</span>
             </button>
           </TableHead>
+          <TableHead>Account(s)</TableHead>
           <TableHead>Asset Class</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {sortedHoldings.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={6} className="text-center">
+            <TableCell colSpan={7} className="text-center">
               No holdings to display.
             </TableCell>
           </TableRow>

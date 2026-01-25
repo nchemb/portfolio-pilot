@@ -12,6 +12,7 @@ import OpenAI from "openai"
 import { prisma } from "@/lib/prisma"
 import { getPortfolioSummary } from "@/lib/portfolio-summary"
 import { buildMonthlyRebalancePlan } from "@/lib/rebalancer"
+import { enforceAiDailyLimit, AiDailyLimitError } from "@/server/ai/limits"
 
 // ===== TYPES =====
 
@@ -558,14 +559,34 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 7. BUILD SYSTEM PROMPT
+    // 7. ENFORCE AI DAILY LIMIT
+    // Check and increment usage before calling OpenAI
+    try {
+      await enforceAiDailyLimit(userId)
+    } catch (error) {
+      if (error instanceof AiDailyLimitError) {
+        return NextResponse.json(
+          {
+            error: "ai_daily_limit_exceeded",
+            message: `You've reached your daily limit of ${error.limit} AI requests. Your limit resets at ${error.resetAt.toISOString()}.`,
+            resetAt: error.resetAt.toISOString(),
+            currentRequests: error.currentRequests,
+            limit: error.limit,
+          },
+          { status: 429 }
+        )
+      }
+      throw error
+    }
+
+    // 8. BUILD SYSTEM PROMPT
     const systemPrompt = buildSystemPrompt(
       portfolioSummary,
       rebalancePlan,
       latestUserMessage.content
     )
 
-    // 8. CALL OPENAI WITH JSON MODE
+    // 9. CALL OPENAI WITH JSON MODE
     const model = process.env.OPENAI_MODEL || "gpt-4o-mini"
 
     const openaiMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
@@ -577,20 +598,40 @@ export async function POST(request: NextRequest) {
       { role: "user", content: latestUserMessage.content },
     ]
 
-    const completion = await openai.chat.completions.create({
-      model,
-      messages: openaiMessages,
-      response_format: { type: "json_object" },
-      temperature: 0.2, // Lower temperature for consistency
-      max_tokens: 800,
-    })
+    // Add timeout to prevent hung requests in serverless
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+
+    let completion: OpenAI.Chat.Completions.ChatCompletion
+    try {
+      completion = await openai.chat.completions.create(
+        {
+          model,
+          messages: openaiMessages,
+          response_format: { type: "json_object" },
+          temperature: 0.2, // Lower temperature for consistency
+          max_tokens: 800,
+        },
+        { signal: controller.signal }
+      )
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        return NextResponse.json(
+          { error: "Request timed out. Please try again." },
+          { status: 504 }
+        )
+      }
+      throw error
+    } finally {
+      clearTimeout(timeoutId)
+    }
 
     const rawContent = completion.choices[0]?.message?.content || "{}"
 
-    // 9. PARSE STRUCTURED JSON
+    // 10. PARSE STRUCTURED JSON
     let structured = parseStructuredJSON(rawContent, portfolioSummary, rebalancePlan)
 
-    // 10. ENHANCE STRUCTURED WITH DETERMINISTIC DATA
+    // 11. ENHANCE STRUCTURED WITH DETERMINISTIC DATA
     if (structured.intent === "rebalance_plan" && rebalancePlan) {
       // Ensure buys are present
       if (!structured.buys || structured.buys.length === 0) {
@@ -628,13 +669,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 11. GENERATE MARKDOWN DETERMINISTICALLY
+    // 12. GENERATE MARKDOWN DETERMINISTICALLY
     const replyMarkdown = generateMarkdown(structured)
 
-    // 12. EXTRACT FACTS USED
+    // 13. EXTRACT FACTS USED
     const factsUsed = extractFactsUsed(portfolioSummary, rebalancePlan)
 
-    // 13. RETURN RESPONSE
+    // 14. RETURN RESPONSE
     const response: ChatResponse = {
       reply: replyMarkdown, // backward compatibility
       replyMarkdown,

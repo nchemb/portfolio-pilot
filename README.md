@@ -9,6 +9,7 @@ A Next.js application for tracking and managing your investment portfolio with A
 - **AI Chat Assistant**: Get personalized advice grounded in your real data (not hallucinated numbers)
 - **Rebalancing Recommendations**: Receive actionable suggestions for monthly contributions
 - **Asset Classification**: Automatic and manual classification with override support
+- **Subscription Billing**: Stripe-powered subscription management with billing portal
 
 ## Getting Started
 
@@ -19,6 +20,7 @@ A Next.js application for tracking and managing your investment portfolio with A
 - Plaid API credentials
 - OpenAI API key
 - Clerk account for authentication
+- Stripe account for payments
 
 ### Environment Variables
 
@@ -42,6 +44,14 @@ PLAID_ENV="sandbox"  # or "development" or "production"
 # OpenAI (required for Portfolio Copilot chat)
 OPENAI_API_KEY="sk-..."
 OPENAI_MODEL="gpt-4o-mini"  # optional, defaults to gpt-4o-mini
+
+# Stripe (for subscription billing)
+STRIPE_SECRET_KEY="sk_test_..."
+STRIPE_PRICE_ID="price_..."  # Your subscription price ID
+STRIPE_WEBHOOK_SECRET="whsec_..."  # Webhook signing secret
+
+# App URL (required for Stripe redirects)
+NEXT_PUBLIC_APP_URL="http://localhost:3000"  # Use your production URL in production
 ```
 
 ### Installation
@@ -158,8 +168,77 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
+## Stripe Setup
+
+1. Create a Stripe account at [stripe.com](https://stripe.com)
+
+2. Create a product and price in the Stripe Dashboard:
+   - Go to Products > Add product
+   - Name: "Portfolio Copilot Pro"
+   - Price: $9/month (or your desired price)
+   - Copy the Price ID (starts with `price_`)
+
+3. Get your API keys from the Developers section:
+   - Copy the Secret key (starts with `sk_test_` or `sk_live_`)
+
+4. Set up webhooks:
+   - Go to Developers > Webhooks
+   - Add endpoint: `https://your-domain.com/api/stripe/webhook`
+   - Select events:
+     - `checkout.session.completed`
+     - `customer.subscription.updated`
+     - `customer.subscription.deleted`
+     - `invoice.payment_failed`
+   - Copy the Signing secret (starts with `whsec_`)
+
+5. Configure the Customer Portal:
+   - Go to Settings > Billing > Customer portal
+   - Enable the portal and configure allowed actions
+
+### Testing Webhooks Locally
+
+Use the Stripe CLI to forward webhooks to your local server:
+
+```bash
+# Install Stripe CLI
+brew install stripe/stripe-cli/stripe
+
+# Login to Stripe
+stripe login
+
+# Forward webhooks to local server
+stripe listen --forward-to localhost:3000/api/stripe/webhook
+
+# Copy the webhook signing secret from the CLI output
+```
+
 ## Deploy on Vercel
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. Push your code to GitHub
+
+2. Import your project on [Vercel](https://vercel.com/new)
+
+3. Add all environment variables in the Vercel dashboard:
+   - `DATABASE_URL` - Your PostgreSQL connection string
+   - `DIRECT_DATABASE_URL` - Direct connection for migrations
+   - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` - Clerk publishable key
+   - `CLERK_SECRET_KEY` - Clerk secret key
+   - `PLAID_CLIENT_ID` - Plaid client ID
+   - `PLAID_SECRET` - Plaid secret (use production secret)
+   - `PLAID_ENV` - Set to `production` for live
+   - `OPENAI_API_KEY` - OpenAI API key
+   - `STRIPE_SECRET_KEY` - Stripe secret key (use live key)
+   - `STRIPE_PRICE_ID` - Your Stripe price ID
+   - `STRIPE_WEBHOOK_SECRET` - Webhook signing secret for production endpoint
+   - `NEXT_PUBLIC_APP_URL` - Your production URL (e.g., `https://your-app.vercel.app`)
+
+4. Run database migrations:
+   ```bash
+   npx prisma migrate deploy
+   ```
+
+5. Update Stripe webhook endpoint to your production URL
+
+6. Update Clerk allowed origins and redirect URLs
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

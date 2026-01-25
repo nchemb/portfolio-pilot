@@ -6,7 +6,14 @@ import { Check, Loader2, RefreshCw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 
-type RefreshState = "idle" | "loading" | "success" | "error"
+type RefreshState = "idle" | "loading" | "success" | "error" | "rate_limited"
+
+type RefreshResponse = {
+  ok?: boolean
+  error?: string
+  retryAfterSeconds?: number
+  message?: string
+}
 
 export function OverviewRefreshButton() {
   const router = useRouter()
@@ -19,14 +26,43 @@ export function OverviewRefreshButton() {
     setMessage(null)
 
     try {
-      await fetch("/api/refresh-dashboard", { method: "POST" })
-      router.refresh()
-      setState("success")
-      setMessage("Updated")
-      setTimeout(() => {
-        setState("idle")
-        setMessage(null)
-      }, 2000)
+      const response = await fetch("/api/refresh-dashboard", { method: "POST" })
+      const data: RefreshResponse = await response.json()
+
+      if (response.ok) {
+        router.refresh()
+        setState("success")
+        setMessage("Updated")
+        setTimeout(() => {
+          setState("idle")
+          setMessage(null)
+        }, 2000)
+      } else if (response.status === 429) {
+        // Rate limited
+        setState("rate_limited")
+        const retrySeconds = data.retryAfterSeconds || 60
+        setMessage(`Sync temporarily rate-limited—try again in ${retrySeconds}s.`)
+        setTimeout(() => {
+          setState("idle")
+          setMessage(null)
+        }, Math.min(retrySeconds * 1000, 10000)) // Clear message after retry period or 10s max
+      } else if (response.status === 409) {
+        // Sync in progress
+        setState("error")
+        setMessage("Sync already in progress. Please wait.")
+        setTimeout(() => {
+          setState("idle")
+          setMessage(null)
+        }, 3000)
+      } else {
+        // Other error
+        setState("error")
+        setMessage(data.message || "Unable to refresh.")
+        setTimeout(() => {
+          setState("idle")
+          setMessage(null)
+        }, 2500)
+      }
     } catch {
       setState("error")
       setMessage("Unable to refresh.")
@@ -56,6 +92,8 @@ export function OverviewRefreshButton() {
       </Button>
       {state === "error" ? (
         <span className="text-xs text-rose-600">{message}</span>
+      ) : state === "rate_limited" ? (
+        <span className="text-xs text-amber-600">{message}</span>
       ) : state === "success" ? (
         <span className="text-xs text-emerald-600">{message}</span>
       ) : null}

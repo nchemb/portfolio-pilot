@@ -14,11 +14,20 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  profile      Profile?
-  accounts     BrokerageAccount[]
-  cashAccounts CashAccount[]
-  plaidItems   PlaidItem[]
-  overrides    UserSecurityOverride[]
+  // Stripe subscription fields
+  stripeCustomerId     String?   @unique
+  stripeSubscriptionId String?
+  subscriptionStatus   String?   // active|past_due|canceled|trialing|none
+  subscriptionEndsAt   DateTime?
+
+  profile           Profile?
+  accounts          BrokerageAccount[]
+  cashAccounts      CashAccount[]
+  plaidItems        PlaidItem[]
+  overrides         UserSecurityOverride[]
+  syncState         SyncState?
+  userDailySnapshots UserDailySnapshot[]
+  aiUsageDaily      AiUsageDaily[]
 }
 
 model Profile {
@@ -284,4 +293,90 @@ model FundProfile {
 
   @@index([assetClass])
   @@index([geography])
+}
+
+// ===== DAILY SNAPSHOT SYSTEM =====
+
+/// User-level daily snapshot aggregating all brokerage + cash accounts.
+/// Written by the cron job or manual refresh. Used for historical tracking.
+model UserDailySnapshot {
+  id     String @id @default(cuid())
+  userId String
+
+  // Normalized to start-of-day UTC (00:00:00.000Z)
+  date DateTime
+
+  // Total portfolio value in cents (use BigInt for precision)
+  totalValueCents BigInt
+
+  // Daily change from previous snapshot in cents (optional, null if no prior snapshot)
+  dailyChangeCents BigInt?
+
+  // Asset allocation as JSON: { "us_equity": 0.515, "intl_equity": 0.10, ... }
+  allocationJson Json
+
+  // Number of holdings at snapshot time
+  holdingsCount Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // One snapshot per user per day
+  @@unique([userId, date])
+  @@index([userId])
+  @@index([date])
+}
+
+/// Tracks sync state for a user's Plaid connections.
+/// Provides locking, freshness checks, and rate-limit backoff.
+model SyncState {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  // When Plaid API was last called successfully
+  lastPlaidSyncAt DateTime?
+
+  // Lock to prevent concurrent syncs
+  syncInProgress Boolean   @default(false)
+  syncLockAt     DateTime? // When lock was acquired (for staleness check)
+
+  // Rate-limit backoff: if set, don't attempt sync before this time
+  nextAllowedSyncAt DateTime?
+
+  // Last sync result
+  lastSyncStatus String? // "success" | "error" | "rate_limited"
+  lastSyncError  String? // Error message if failed
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Tracks daily AI usage per user for rate limiting.
+/// One row per user per day.
+model AiUsageDaily {
+  id     String @id @default(cuid())
+  userId String
+
+  // Normalized to start-of-day UTC
+  date DateTime
+
+  // Number of AI requests made this day
+  requests Int @default(0)
+
+  // Optional: total tokens consumed (for future cost tracking)
+  tokens Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // One usage record per user per day
+  @@unique([userId, date])
+  @@index([userId])
+  @@index([date])
 }

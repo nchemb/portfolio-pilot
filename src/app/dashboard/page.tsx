@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import { auth } from "@clerk/nextjs/server"
 
 import { prisma } from "@/lib/prisma"
+import { getStripe } from "@/lib/stripe"
 import {
   Card,
   CardContent,
@@ -11,7 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
@@ -29,6 +30,12 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs"
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
 import { PlaidLinkButton } from "@/components/plaid-link-button"
 import { PlaidLinkCashButton } from "@/components/plaid-link-cash-button"
 import { PlaidResyncButton } from "@/components/plaid-resync-button"
@@ -40,6 +47,8 @@ import { PortfolioCopilotChat } from "@/components/portfolio-copilot-chat"
 import { StatCard } from "@/components/stat-card"
 import { DeleteBrokerageButton } from "@/components/delete-brokerage-button"
 import { DeleteCashAccountButton } from "@/components/delete-cash-account-button"
+import { BillingSection } from "@/components/billing-section"
+import { DeleteAccountSection } from "@/components/delete-account-section"
 import { aggregateHoldings } from "@/lib/holdings"
 import { normalizeTicker } from "@/lib/normalize"
 import {
@@ -70,6 +79,35 @@ const ASSET_CLASS_LABELS: Record<string, string> = {
 type SearchParams = {
   tab?: string
   saved?: string
+  checkout?: string
+}
+
+function getSyncStatus(lastSyncedAt: Date | null): { label: string; variant: "synced" | "stale" | "error" } {
+  if (!lastSyncedAt) return { label: "Never synced", variant: "error" }
+
+  const now = new Date()
+  const hoursSinceSync = (now.getTime() - lastSyncedAt.getTime()) / (1000 * 60 * 60)
+
+  if (hoursSinceSync < 24) return { label: "Synced", variant: "synced" }
+  if (hoursSinceSync < 72) return { label: "Needs refresh", variant: "stale" }
+  return { label: "Needs relink", variant: "error" }
+}
+
+function SyncStatusBadge({ lastSyncedAt }: { lastSyncedAt: Date | null }) {
+  const { label, variant } = getSyncStatus(lastSyncedAt)
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+        variant === "synced"
+          ? "bg-emerald-100 text-emerald-700"
+          : variant === "stale"
+          ? "bg-amber-100 text-amber-700"
+          : "bg-rose-100 text-rose-700"
+      }`}
+    >
+      {label}
+    </span>
+  )
 }
 
 function toNumber(value: unknown): number {
@@ -213,6 +251,7 @@ export default async function DashboardPage({
   const resolvedSearchParams = searchParams ? await searchParams : undefined
   const activeTab = resolvedSearchParams?.tab ?? "overview"
   const saved = resolvedSearchParams?.saved === "1"
+  const checkoutStatus = resolvedSearchParams?.checkout
 
   const [accounts, cashAccounts, profile, user] = await Promise.all([
     prisma.brokerageAccount.findMany({
@@ -224,8 +263,57 @@ export default async function DashboardPage({
       orderBy: { createdAt: "asc" },
     }),
     prisma.profile.findUnique({ where: { userId } }),
-    prisma.user.findUnique({ where: { id: userId }, select: { email: true } }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        email: true,
+        subscriptionStatus: true,
+        stripeCustomerId: true,
+        subscriptionEndsAt: true,
+        stripeSubscriptionId: true,
+      },
+    }),
   ])
+
+  // Subscription gating: redirect to paywall if not an active subscriber
+  // "canceling" means user canceled but still has access until period ends
+  let isSubscribed =
+    user?.subscriptionStatus === "active" ||
+    user?.subscriptionStatus === "trialing" ||
+    user?.subscriptionStatus === "canceling"
+
+  // Handle race condition: if coming from checkout success but webhook hasn't updated yet,
+  // verify subscription directly with Stripe
+  if (!isSubscribed && checkoutStatus === "success" && user?.stripeCustomerId) {
+    try {
+      const stripe = getStripe()
+      const subscriptions = await stripe.subscriptions.list({
+        customer: user.stripeCustomerId,
+        status: "active",
+        limit: 1,
+      })
+
+      if (subscriptions.data.length > 0) {
+        const subscription = subscriptions.data[0]
+        // Update the database with the subscription info
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            stripeSubscriptionId: subscription.id,
+            subscriptionStatus: subscription.status,
+            subscriptionEndsAt: new Date(subscription.current_period_end * 1000),
+          },
+        })
+        isSubscribed = true
+      }
+    } catch (error) {
+      console.error("Error verifying subscription with Stripe:", error)
+    }
+  }
+
+  if (!isSubscribed && process.env.STRIPE_PRICE_ID) {
+    redirect("/paywall")
+  }
 
   const accountIds = accounts.map((a) => a.id)
 
@@ -476,7 +564,17 @@ export default async function DashboardPage({
           <div className="flex flex-col gap-2">
             <h1 className="text-3xl font-semibold">Dashboard</h1>
             <p className="text-muted-foreground">Portfolio summary and insights.</p>
+            {latestSyncAt && (
+              <p className="text-xs text-muted-foreground">
+                Last updated: {latestSyncAt.toLocaleString()}
+              </p>
+            )}
           </div>
+          {checkoutStatus === "success" && (
+            <div className="rounded-md bg-emerald-50 border border-emerald-200 px-4 py-2 text-sm text-emerald-800">
+              Welcome! Your subscription is now active.
+            </div>
+          )}
         </div>
 
         <Tabs defaultValue={activeTab} className="w-full">
@@ -496,11 +594,12 @@ export default async function DashboardPage({
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Button asChild>
-                    <Link href="/dashboard?tab=brokerage">
-                      Connect an account
-                    </Link>
-                  </Button>
+                  <Link
+                    href="/dashboard?tab=brokerage"
+                    className={buttonVariants({ variant: "default", size: "default" })}
+                  >
+                    Connect an account
+                  </Link>
                 </CardContent>
               </Card>
             ) : (
@@ -749,6 +848,7 @@ export default async function DashboardPage({
                             <div className="flex-1">
                               <div className="flex items-center gap-2 text-sm font-medium">
                                 <span>{acct.institution ?? "Brokerage"}</span>
+                                <SyncStatusBadge lastSyncedAt={acct.lastSyncedAt} />
                               </div>
                               <div className="text-muted-foreground text-xs">
                                 {acct.name ?? "Account"}
@@ -757,6 +857,11 @@ export default async function DashboardPage({
                               {accountTotal > 0 && (
                                 <div className="mt-1 text-sm font-semibold">
                                   {formatCurrency(accountTotal)}
+                                </div>
+                              )}
+                              {acct.lastSyncedAt && (
+                                <div className="text-[10px] text-muted-foreground">
+                                  Last synced: {acct.lastSyncedAt.toLocaleString()}
                                 </div>
                               )}
                             </div>
@@ -780,67 +885,102 @@ export default async function DashboardPage({
             </Card>
 
             <Card>
-              <CardHeader>
-                <CardTitle className="flex flex-wrap items-center gap-2">
-                  Add a cash account
-                  <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                    Beta
-                  </span>
-                </CardTitle>
-                <CardDescription>
-                  Link checking or savings accounts to include cash in your portfolio allocation.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <PlaidLinkCashButton />
-                <p className="text-xs text-muted-foreground">
-                  Cash account balances are added to your portfolio's "Cash" allocation.
-                </p>
-                {cashAccounts.length > 0 && (
-                  <div className="space-y-3">
-                    <Separator />
-                    <div className="space-y-2">
-                      {cashAccounts.map((acct) => {
-                        const balance = toNumber(acct.balance)
-                        return (
-                          <div
-                            key={acct.id}
-                            className="flex items-center justify-between rounded-md border px-3 py-2"
-                          >
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 text-sm font-medium">
-                                <span>{acct.institution ?? "Cash Account"}</span>
-                              </div>
-                              <div className="text-muted-foreground text-xs">
-                                {acct.name ?? "Account"}
-                                {acct.mask ? ` ****${acct.mask}` : ""}
-                                {acct.type ? ` (${acct.type})` : ""}
-                              </div>
-                              {balance > 0 && (
-                                <div className="mt-1 text-sm font-semibold">
-                                  {formatCurrency(balance)}
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <CashResyncButton cashAccountId={acct.id} />
-                              <DeleteCashAccountButton
-                                cashAccountId={acct.id}
-                                institutionName={acct.institution}
-                                accountName={acct.name}
-                              />
-                            </div>
-                          </div>
-                        )
-                      })}
+              <Accordion type="single" collapsible className="w-full">
+                <AccordionItem value="cash" className="border-b-0">
+                  <AccordionTrigger className="px-6 py-4 hover:no-underline">
+                    <div className="flex flex-1 items-center justify-between pr-2">
+                      <div className="text-left">
+                        <div className="flex items-center gap-2 text-base font-semibold">
+                          Cash (optional)
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                            Beta
+                          </span>
+                        </div>
+                        <p className="text-sm font-normal text-muted-foreground">
+                          Include checking/savings balances in allocation
+                        </p>
+                      </div>
+                      <span className="text-sm font-medium text-muted-foreground">
+                        {totalCashAccountBalance > 0
+                          ? `Cash included: ${formatCurrency(totalCashAccountBalance)}`
+                          : "Cash not included"}
+                      </span>
                     </div>
-                  </div>
-                )}
-              </CardContent>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-6 pb-6">
+                    <div className="space-y-4">
+                      <PlaidLinkCashButton />
+                      <p className="text-xs text-muted-foreground">
+                        Cash account balances are added to your portfolio's "Cash" allocation.
+                      </p>
+                      {cashAccounts.length > 0 && (
+                        <div className="space-y-3">
+                          <Separator />
+                          <div className="space-y-2">
+                            {cashAccounts.map((acct) => {
+                              const balance = toNumber(acct.balance)
+                              return (
+                                <div
+                                  key={acct.id}
+                                  className="flex items-center justify-between rounded-md border px-3 py-2"
+                                >
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 text-sm font-medium">
+                                      <span>{acct.institution ?? "Cash Account"}</span>
+                                      <SyncStatusBadge lastSyncedAt={acct.lastSyncedAt} />
+                                    </div>
+                                    <div className="text-muted-foreground text-xs">
+                                      {acct.name ?? "Account"}
+                                      {acct.mask ? ` ****${acct.mask}` : ""}
+                                      {acct.type ? ` (${acct.type})` : ""}
+                                    </div>
+                                    {balance > 0 && (
+                                      <div className="mt-1 text-sm font-semibold">
+                                        {formatCurrency(balance)}
+                                      </div>
+                                    )}
+                                    {acct.lastSyncedAt && (
+                                      <div className="text-[10px] text-muted-foreground">
+                                        Last synced: {acct.lastSyncedAt.toLocaleString()}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <CashResyncButton cashAccountId={acct.id} />
+                                    <DeleteCashAccountButton
+                                      cashAccountId={acct.id}
+                                      institutionName={acct.institution}
+                                      accountName={acct.name}
+                                    />
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
             </Card>
           </TabsContent>
 
           <TabsContent value="settings" className="mt-4 space-y-6">
+            <BillingSection
+              subscriptionStatus={
+                user?.subscriptionStatus as
+                  | "active"
+                  | "trialing"
+                  | "canceling"
+                  | "canceled"
+                  | "past_due"
+                  | null
+              }
+              subscriptionEndsAt={user?.subscriptionEndsAt ?? null}
+              hasStripeCustomer={!!user?.stripeCustomerId}
+            />
+
             <Card>
               <CardHeader>
                 <CardTitle>Profile settings</CardTitle>
@@ -949,6 +1089,13 @@ export default async function DashboardPage({
                 </form>
               </CardContent>
             </Card>
+
+            <DeleteAccountSection
+              hasActiveSubscription={
+                user?.subscriptionStatus === "active" ||
+                user?.subscriptionStatus === "trialing"
+              }
+            />
           </TabsContent>
         </Tabs>
       </div>

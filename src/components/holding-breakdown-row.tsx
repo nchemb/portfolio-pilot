@@ -183,6 +183,17 @@ export function HoldingBreakdownRow({
         </TableCell>
         <TableCell>{holding.securityType ?? "--"}</TableCell>
         <TableCell>
+          <div className="text-xs text-muted-foreground max-w-[120px] truncate" title={
+            holding.breakdown.length === 1
+              ? holding.breakdown[0].accountLabel
+              : holding.breakdown.map((b) => b.accountLabel).join(", ")
+          }>
+            {holding.breakdown.length === 1
+              ? holding.breakdown[0].accountLabel
+              : `${holding.breakdown.length} accounts`}
+          </div>
+        </TableCell>
+        <TableCell>
           <div
             className="flex flex-col gap-1"
             onClick={(event) => event.stopPropagation()}
@@ -255,7 +266,7 @@ export function HoldingBreakdownRow({
         </TableCell>
       </TableRow>
       <TableRow className={open ? "bg-muted/10" : ""}>
-        <TableCell colSpan={6} className="p-0">
+        <TableCell colSpan={7} className="p-0">
           <div
             className={`overflow-hidden transition-all duration-200 ${open ? "max-h-[320px] opacity-100" : "max-h-0 opacity-0"
               }`}

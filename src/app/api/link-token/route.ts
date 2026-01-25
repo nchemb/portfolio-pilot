@@ -6,7 +6,9 @@ import { isAxiosError } from "axios"
 import { plaidClient, plaidConfigReady } from "@/lib/plaid"
 
 // Simple in-memory cache to avoid creating multiple link tokens in rapid succession.
-// NOTE: In serverless/edge/multi-instance deployments this is best-effort only.
+// IMPORTANT: In Vercel serverless, this cache is per-instance and may not be shared
+// across invocations. This is acceptable for reducing duplicate requests within a
+// single instance's lifetime. For production at scale, consider Redis caching.
 const linkTokenCache = new Map<string, { token: string; expiresAt: number }>()
 
 // Plaid link tokens typically expire after ~30 minutes. We cache for a shorter window to reduce spam.

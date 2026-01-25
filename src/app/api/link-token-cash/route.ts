@@ -6,6 +6,9 @@ import { isAxiosError } from "axios"
 import { plaidClient, plaidConfigReady } from "@/lib/plaid"
 
 // Simple in-memory cache to avoid creating multiple link tokens in rapid succession.
+// IMPORTANT: In Vercel serverless, this cache is per-instance and may not be shared
+// across invocations. This is acceptable for reducing duplicate requests within a
+// single instance's lifetime. For production at scale, consider Redis caching.
 const linkTokenCache = new Map<string, { token: string; expiresAt: number }>()
 
 const LINK_TOKEN_TTL_MS = 10 * 60 * 1000 // 10 minutes
