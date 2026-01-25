@@ -351,7 +351,7 @@ export default async function DashboardPage({
   const tickers = Array.from(
     new Set(
       holdings
-        .map((holding) => normalizeTicker(holding.ticker ?? null))
+        .map((holding: { ticker: string | null }) => normalizeTicker(holding.ticker ?? null))
         .filter((ticker): ticker is string => Boolean(ticker))
     )
   )
