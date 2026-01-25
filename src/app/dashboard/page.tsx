@@ -4,7 +4,6 @@ import { redirect } from "next/navigation"
 import { auth } from "@clerk/nextjs/server"
 
 import { prisma } from "@/lib/prisma"
-import type { Holding } from "@prisma/client"
 import { getStripe } from "@/lib/stripe"
 import {
   Card,
@@ -385,7 +384,7 @@ export default async function DashboardPage({
   }, null)
 
   const holdingsWithValue = holdings
-    .map((holding: Holding) => {
+    .map((holding: (typeof holdings)[number]) => {
       const classification = getEffectiveClassification(
         holding,
         classificationMaps
