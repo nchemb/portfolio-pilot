@@ -1,4 +1,4 @@
-# Portfolio Copilot
+# Portfolio Flow
 
 A Next.js application for tracking and managing your investment portfolio with AI-powered assistance grounded in your actual portfolio data.
 
@@ -41,7 +41,7 @@ PLAID_CLIENT_ID="your_plaid_client_id"
 PLAID_SECRET="your_plaid_secret"
 PLAID_ENV="sandbox"  # or "development" or "production"
 
-# OpenAI (required for Portfolio Copilot chat)
+# OpenAI (required for Portfolio Flow chat)
 OPENAI_API_KEY="sk-..."
 OPENAI_MODEL="gpt-4o-mini"  # optional, defaults to gpt-4o-mini
 
@@ -86,9 +86,9 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-## Portfolio Copilot Chat
+## Portfolio Flow Chat
 
-The Portfolio Copilot is an AI assistant embedded in the dashboard that answers questions about your portfolio using **only your actual data** - no hallucinated numbers.
+Portfolio Flow is an AI assistant embedded in the dashboard that answers questions about your portfolio using **only your actual data** - no hallucinated numbers.
 
 ### How It Works
 
@@ -102,13 +102,13 @@ The assistant **never invents financial numbers**. All responses cite specific d
 ### Setting Up Default Monthly Contribution
 
 1. Navigate to the dashboard
-2. In the Portfolio Copilot chat widget, enter your default monthly contribution amount
+2. In the Portfolio Flow chat widget, enter your default monthly contribution amount
 3. Click "Save" to store this preference
 4. The assistant will use this default when you ask rebalancing questions without specifying an amount
 
 ### Sample Questions
 
-Try asking the Portfolio Copilot:
+Try asking Portfolio Flow:
 
 - **"What should I buy with $500 this month to get closer to target?"**
   The assistant will compute a rebalance plan and suggest specific purchases by asset class.
@@ -174,7 +174,7 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 
 2. Create a product and price in the Stripe Dashboard:
    - Go to Products > Add product
-   - Name: "Portfolio Copilot Pro"
+   - Name: "Portfolio Flow Pro"
    - Price: $9/month (or your desired price)
    - Copy the Price ID (starts with `price_`)
 

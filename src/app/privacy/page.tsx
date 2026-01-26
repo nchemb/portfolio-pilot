@@ -9,7 +9,7 @@ export default function PrivacyPage() {
 
       <div className="prose prose-neutral mt-8 dark:prose-invert">
         <p>
-          This privacy policy describes how Portfolio Copilot collects, uses, and protects your personal information.
+          This privacy policy describes how Portfolio Flow collects, uses, and protects your personal information.
         </p>
 
         <h2>Information We Collect</h2>

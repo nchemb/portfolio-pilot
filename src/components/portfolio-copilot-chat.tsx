@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * Portfolio Copilot Chat Widget
+ * Portfolio Flow Chat Widget
  *
  * Client-side chat component grounded in deterministic portfolio truth layer.
  */
@@ -193,7 +193,7 @@ export function PortfolioCopilotChat() {
       <CardHeader className="pb-3 flex-shrink-0">
         <CardTitle className="flex items-center gap-2 text-xl">
           <span className="text-xl">💬</span>
-          Portfolio Copilot
+          Portfolio Flow
           <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
             Beta
           </span>

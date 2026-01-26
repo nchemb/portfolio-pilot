@@ -1,5 +1,5 @@
 /**
- * Portfolio Copilot Chat API
+ * Portfolio Flow Chat API
  *
  * Server-side chat endpoint using OpenAI, grounded in deterministic portfolio truth layer.
  * Returns structured JSON + markdown for consistent, explainable responses.
@@ -317,7 +317,7 @@ function buildSystemPrompt(
   userQuery: string
 ): string {
   const lines = [
-    "You are Portfolio Copilot, a financial assistant. You MUST respond with ONLY valid JSON matching this schema:",
+    "You are Portfolio Flow, a financial assistant. You MUST respond with ONLY valid JSON matching this schema:",
     "",
     "```json",
     "{",

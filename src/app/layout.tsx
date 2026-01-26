@@ -1,5 +1,6 @@
 import { type Metadata } from 'next'
 import Link from 'next/link'
+import Image from 'next/image'
 import {
   ClerkProvider,
   SignedIn,
@@ -22,8 +23,19 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Portfolio Copilot',
+  title: 'Portfolio Flow',
   description: 'Track your portfolio with AI-powered insights grounded in real data.',
+  openGraph: {
+    title: 'Portfolio Flow',
+    description: 'Track your portfolio with AI-powered insights grounded in real data.',
+    images: ['/logo.png'],
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Portfolio Flow',
+    description: 'Track your portfolio with AI-powered insights grounded in real data.',
+    images: ['/logo.png'],
+  },
 }
 
 export default function RootLayout({
@@ -37,9 +49,28 @@ export default function RootLayout({
         <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
           <ToastProvider>
             <header className="sticky top-0 z-50 flex justify-between items-center px-6 h-16 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-              <Link href="/" className="font-semibold text-lg tracking-tight">
-                Portfolio Copilot
-              </Link>
+              <SignedOut>
+                <Link href="/" className="flex items-center">
+                  <Image
+                    src="/logo.png"
+                    alt="PortfolioFlow logo"
+                    width={140}
+                    height={35}
+                    priority
+                  />
+                </Link>
+              </SignedOut>
+              <SignedIn>
+                <Link href="/dashboard" className="flex items-center">
+                  <Image
+                    src="/logo.png"
+                    alt="PortfolioFlow logo"
+                    width={140}
+                    height={35}
+                    priority
+                  />
+                </Link>
+              </SignedIn>
               <div className="flex items-center gap-4">
                 <SignedOut>
                   <Link

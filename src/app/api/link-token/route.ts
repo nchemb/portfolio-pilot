@@ -75,7 +75,7 @@ export async function POST(request: Request) {
       user: {
         client_user_id: clientUserId,
       },
-      client_name: "Portfolio Copilot",
+      client_name: "Portfolio Flow",
       products: [Products.Investments],
       language: "en",
       country_codes: [CountryCode.Us],

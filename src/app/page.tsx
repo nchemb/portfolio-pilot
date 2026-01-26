@@ -61,7 +61,7 @@ export default async function Home() {
                 </div>
                 <div className="flex-1 text-center">
                   <div className="inline-block bg-muted rounded px-3 py-1 text-xs text-muted-foreground">
-                    app.portfoliocopilot.com/dashboard
+                    app.portfolioflow.com/dashboard
                   </div>
                 </div>
               </div>
@@ -443,7 +443,7 @@ export default async function Home() {
         <div className="mx-auto max-w-6xl px-6">
           <div className="flex flex-col items-center justify-between gap-6 sm:flex-row">
             <div className="text-sm text-muted-foreground">
-              &copy; {new Date().getFullYear()} Portfolio Copilot. All rights reserved.
+              &copy; {new Date().getFullYear()} Portfolio Flow. All rights reserved.
             </div>
             <div className="flex flex-wrap justify-center gap-6 text-sm">
               <Link href="/privacy" className="text-muted-foreground hover:text-foreground transition-colors">
@@ -452,7 +452,7 @@ export default async function Home() {
               <Link href="/terms" className="text-muted-foreground hover:text-foreground transition-colors">
                 Terms
               </Link>
-              <a href="mailto:support@portfoliocopilot.com" className="text-muted-foreground hover:text-foreground transition-colors">
+              <a href="mailto:support@portfolioflow.com" className="text-muted-foreground hover:text-foreground transition-colors">
                 Contact
               </a>
             </div>

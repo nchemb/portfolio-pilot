@@ -9,12 +9,12 @@ export default function TermsPage() {
 
       <div className="prose prose-neutral mt-8 dark:prose-invert">
         <p>
-          By using Portfolio Copilot, you agree to these terms of service.
+          By using Portfolio Flow, you agree to these terms of service.
         </p>
 
         <h2>Service Description</h2>
         <p>
-          Portfolio Copilot provides portfolio tracking, analysis, and AI-powered recommendations.
+          Portfolio Flow provides portfolio tracking, analysis, and AI-powered recommendations.
           The service is for informational purposes only and does not constitute financial advice.
         </p>
 
@@ -26,7 +26,7 @@ export default function TermsPage() {
 
         <h2>Disclaimer</h2>
         <p>
-          The information provided by Portfolio Copilot is for general informational purposes only.
+          The information provided by Portfolio Flow is for general informational purposes only.
           We do not guarantee the accuracy, completeness, or usefulness of any information.
           Investment decisions should be made based on your own research and consultation with financial advisors.
         </p>

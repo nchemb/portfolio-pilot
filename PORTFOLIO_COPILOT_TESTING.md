@@ -1,4 +1,4 @@
-# Portfolio Copilot - End-to-End Testing Guide
+# Portfolio Flow - End-to-End Testing Guide
 
 ## Prerequisites
 
@@ -17,10 +17,10 @@ Before testing, ensure you have:
 **Steps:**
 1. Start dev server: `npm run dev`
 2. Navigate to `/dashboard`
-3. Verify the "Portfolio Copilot" card appears at the bottom of the Overview tab
+3. Verify the "Portfolio Flow" card appears at the bottom of the Overview tab
 
 **Expected:**
-- Card renders with title "Portfolio Copilot"
+- Card renders with title "Portfolio Flow"
 - Chat interface is visible with message area, input field, and send button
 - "Monthly contribution" setting row is visible at the top
 
@@ -29,7 +29,7 @@ Before testing, ensure you have:
 ### 2. Set Default Monthly Contribution
 
 **Steps:**
-1. In the Portfolio Copilot card, enter `500` in the monthly contribution input
+1. In the Portfolio Flow card, enter `500` in the monthly contribution input
 2. Click "Save"
 
 **Expected:**

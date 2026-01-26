@@ -72,7 +72,7 @@ export async function POST(request: Request) {
       user: {
         client_user_id: clientUserId,
       },
-      client_name: "Portfolio Copilot",
+      client_name: "Portfolio Flow",
       // Use Transactions product for checking/savings accounts
       products: [Products.Transactions],
       language: "en",

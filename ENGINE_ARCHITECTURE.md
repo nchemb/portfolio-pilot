@@ -1,4 +1,4 @@
-# Portfolio Copilot Engine Architecture
+# Portfolio Flow Engine Architecture
 
 Production-grade deterministic engine layer for portfolio analysis and rebalancing.
 
