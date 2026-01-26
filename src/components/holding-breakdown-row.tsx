@@ -153,19 +153,19 @@ export function HoldingBreakdownRow({
         className={`cursor-pointer transition-colors ${open ? "bg-muted/40" : "hover:bg-muted/30"
           }`}
       >
-        <TableCell>
-          <div className="flex items-center gap-2">
+        <TableCell className="overflow-hidden">
+          <div className="flex items-center gap-2 min-w-0">
             <ChevronRight
-              className={`h-4 w-4 transition-transform ${open ? "rotate-90" : "rotate-0"
+              className={`h-4 w-4 flex-shrink-0 transition-transform ${open ? "rotate-90" : "rotate-0"
                 }`}
             />
-            <div>
-              <div className="font-medium">
+            <div className="min-w-0 overflow-hidden">
+              <div className="font-medium truncate">
                 {holding.assetClass === "cash"
                   ? "Cash"
                   : holding.ticker ?? "--"}
               </div>
-              <div className="text-muted-foreground text-xs">{holding.name}</div>
+              <div className="text-muted-foreground text-xs truncate">{holding.name}</div>
             </div>
           </div>
         </TableCell>
@@ -180,9 +180,9 @@ export function HoldingBreakdownRow({
         <TableCell className="text-right tabular-nums">
           {formatCurrency(holding.totalValue)}
         </TableCell>
-        <TableCell>{holding.securityType ?? "--"}</TableCell>
-        <TableCell>
-          <div className="text-xs text-muted-foreground max-w-[120px] truncate" title={
+        <TableCell className="truncate">{holding.securityType ?? "--"}</TableCell>
+        <TableCell className="overflow-hidden">
+          <div className="text-xs text-muted-foreground truncate" title={
             holding.breakdown.length === 1
               ? holding.breakdown[0].accountLabel
               : holding.breakdown.map((b) => b.accountLabel).join(", ")
@@ -192,33 +192,31 @@ export function HoldingBreakdownRow({
               : `${holding.breakdown.length} accounts`}
           </div>
         </TableCell>
-        <TableCell>
+        <TableCell className="overflow-hidden">
           <div
-            className="flex flex-col gap-1"
+            className="flex flex-col gap-0.5 min-w-0"
             onClick={(event) => event.stopPropagation()}
             onKeyDown={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 flex-wrap">
               {isEditing ? (
-                <Select
-                  value={draftAssetClass}
-                  onChange={(event) => setDraftAssetClass(event.target.value)}
-                  disabled={dropdownDisabled || saving}
-                >
-                  <option value="us_equity">US Equity</option>
-                  <option value="intl_equity">International Equity</option>
-                  <option value="bonds">Bonds</option>
-                  <option value="cash">Cash</option>
-                  <option value="other">Other</option>
-                </Select>
-              ) : (
-                <span className="text-sm">{effectiveAssetClass.replace(/_/g, " ")}</span>
-              )}
-              {isEditing ? (
-                <div className="flex items-center gap-1">
+                <>
+                  <Select
+                    value={draftAssetClass}
+                    onChange={(event) => setDraftAssetClass(event.target.value)}
+                    disabled={dropdownDisabled || saving}
+                    className="h-7 text-xs w-[110px]"
+                  >
+                    <option value="us_equity">US Equity</option>
+                    <option value="intl_equity">Intl Equity</option>
+                    <option value="bonds">Bonds</option>
+                    <option value="cash">Cash</option>
+                    <option value="other">Other</option>
+                  </Select>
                   <Button
                     variant="ghost"
                     size="sm"
+                    className="h-7 px-2 text-xs"
                     onClick={handleAssetClassSave}
                     disabled={saving || dropdownDisabled}
                   >
@@ -227,29 +225,35 @@ export function HoldingBreakdownRow({
                   <Button
                     variant="ghost"
                     size="sm"
+                    className="h-7 px-2 text-xs"
                     onClick={handleCancelEdit}
                     disabled={saving}
                   >
                     Cancel
                   </Button>
-                </div>
+                </>
               ) : (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleStartEdit}
-                  disabled={saving || !canEdit}
-                >
-                  Edit
-                </Button>
+                <>
+                  <span className="text-sm truncate">{effectiveAssetClass.replace(/_/g, " ")}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={handleStartEdit}
+                    disabled={saving || !canEdit}
+                  >
+                    Edit
+                  </Button>
+                </>
               )}
             </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
               <span>{sourceLabel}</span>
               {hasOverride ? (
                 <Button
                   variant="ghost"
                   size="sm"
+                  className="h-5 px-1 text-[10px]"
                   onClick={handleReset}
                   disabled={saving}
                 >
@@ -257,9 +261,9 @@ export function HoldingBreakdownRow({
                 </Button>
               ) : null}
             </div>
-            {error ? <span className="text-xs text-rose-600">{error}</span> : null}
+            {error ? <span className="text-[10px] text-rose-600 truncate">{error}</span> : null}
             {!tickerNormalized && effectiveAssetClass !== "cash" ? (
-              <span className="text-xs text-muted-foreground">Missing ticker</span>
+              <span className="text-[10px] text-muted-foreground">No ticker</span>
             ) : null}
           </div>
         </TableCell>

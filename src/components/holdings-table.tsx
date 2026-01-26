@@ -117,10 +117,11 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
           className="h-9 max-w-sm"
         />
       </div>
-      <Table>
+      <div className="w-full overflow-x-auto">
+      <Table className="table-fixed w-full min-w-[700px]">
         <TableHeader className="sticky top-0 z-10 bg-background [&_th]:bg-background">
         <TableRow>
-          <TableHead>
+          <TableHead className="w-[22%]">
             <button
               type="button"
               onClick={() => handleSort("ticker")}
@@ -129,7 +130,7 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
               Ticker / Name <span className="text-[10px] text-muted-foreground">{sortIndicator("ticker")}</span>
             </button>
           </TableHead>
-          <TableHead className="text-right">
+          <TableHead className="w-[10%] text-right">
             <button
               type="button"
               onClick={() => handleSort("quantity")}
@@ -138,7 +139,7 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
               Quantity <span className="text-[10px] text-muted-foreground">{sortIndicator("quantity")}</span>
             </button>
           </TableHead>
-          <TableHead className="text-right">
+          <TableHead className="w-[9%] text-right">
             <button
               type="button"
               onClick={() => handleSort("price")}
@@ -147,7 +148,7 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
               Price <span className="text-[10px] text-muted-foreground">{sortIndicator("price")}</span>
             </button>
           </TableHead>
-          <TableHead className="text-right">
+          <TableHead className="w-[12%] text-right">
             <button
               type="button"
               onClick={() => handleSort("value")}
@@ -159,17 +160,17 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
               ) : null}
             </button>
           </TableHead>
-          <TableHead>
+          <TableHead className="w-[10%]">
             <button
               type="button"
               onClick={() => handleSort("securityType")}
               className="flex items-center gap-1 text-left"
             >
-              Security Type <span className="text-[10px] text-muted-foreground">{sortIndicator("securityType")}</span>
+              Type <span className="text-[10px] text-muted-foreground">{sortIndicator("securityType")}</span>
             </button>
           </TableHead>
-          <TableHead>Account(s)</TableHead>
-          <TableHead>Asset Class</TableHead>
+          <TableHead className="w-[14%]">Account(s)</TableHead>
+          <TableHead className="w-[23%]">Asset Class</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -193,6 +194,7 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
         )}
       </TableBody>
     </Table>
+      </div>
     </div>
   )
 }

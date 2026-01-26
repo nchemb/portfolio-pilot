@@ -51,6 +51,7 @@ export async function POST() {
           quantity: 1,
         },
       ],
+      allow_promotion_codes: true,
       success_url: `${baseUrl}/dashboard?checkout=success`,
       cancel_url: `${baseUrl}/paywall?checkout=canceled`,
       metadata: { clerkUserId: userId },
