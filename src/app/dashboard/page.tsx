@@ -967,20 +967,6 @@ export default async function DashboardPage({
           </TabsContent>
 
           <TabsContent value="settings" className="mt-4 space-y-6">
-            <BillingSection
-              subscriptionStatus={
-                user?.subscriptionStatus as
-                  | "active"
-                  | "trialing"
-                  | "canceling"
-                  | "canceled"
-                  | "past_due"
-                  | null
-              }
-              subscriptionEndsAt={user?.subscriptionEndsAt ?? null}
-              hasStripeCustomer={!!user?.stripeCustomerId}
-            />
-
             <Card>
               <CardHeader>
                 <CardTitle>Profile settings</CardTitle>
@@ -990,23 +976,15 @@ export default async function DashboardPage({
               </CardHeader>
               <CardContent>
                 <form action={updateProfile} className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium" htmlFor="userId">
-                        User ID
-                      </label>
-                      <Input id="userId" value={userId} readOnly />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium" htmlFor="email">
-                        Email
-                      </label>
-                      <Input
-                        id="email"
-                        value={user?.email ?? "--"}
-                        readOnly
-                      />
-                    </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium" htmlFor="email">
+                      Email
+                    </label>
+                    <Input
+                      id="email"
+                      value={user?.email ?? "--"}
+                      readOnly
+                    />
                   </div>
 
                   <Separator />
@@ -1089,6 +1067,20 @@ export default async function DashboardPage({
                 </form>
               </CardContent>
             </Card>
+
+            <BillingSection
+              subscriptionStatus={
+                user?.subscriptionStatus as
+                  | "active"
+                  | "trialing"
+                  | "canceling"
+                  | "canceled"
+                  | "past_due"
+                  | null
+              }
+              subscriptionEndsAt={user?.subscriptionEndsAt ?? null}
+              hasStripeCustomer={!!user?.stripeCustomerId}
+            />
 
             <DeleteAccountSection
               hasActiveSubscription={
