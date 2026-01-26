@@ -6,11 +6,18 @@ type PrismaGlobal = typeof globalThis & {
 
 const globalForPrisma = globalThis as PrismaGlobal
 
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
+function createPrismaClient(): PrismaClient {
+  return new PrismaClient({
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
+    // Limit connection pool for serverless environments
+    // This prevents "max clients reached" errors in production
+    datasourceUrl: process.env.DATABASE_URL,
   })
+}
 
-// Always store globally to prevent connection pool exhaustion in serverless
+export const prisma = globalForPrisma.prisma ?? createPrismaClient()
+
+// Only cache in development to preserve HMR behavior
+// In production (serverless), each cold start gets a fresh client
+// but warm invocations reuse the same instance
 globalForPrisma.prisma = prisma

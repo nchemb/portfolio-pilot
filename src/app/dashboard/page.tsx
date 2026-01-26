@@ -253,7 +253,21 @@ export default async function DashboardPage({
   const saved = resolvedSearchParams?.saved === "1"
   const checkoutStatus = resolvedSearchParams?.checkout
 
-  const [accounts, cashAccounts, profile, user] = await Promise.all([
+  // Ensure user record exists (handles race condition if webhook hasn't fired yet)
+  const user = await prisma.user.upsert({
+    where: { id: userId },
+    update: {},
+    create: { id: userId },
+    select: {
+      email: true,
+      subscriptionStatus: true,
+      stripeCustomerId: true,
+      subscriptionEndsAt: true,
+      stripeSubscriptionId: true,
+    },
+  })
+
+  const [accounts, cashAccounts, profile] = await Promise.all([
     prisma.brokerageAccount.findMany({
       where: { userId },
       orderBy: { createdAt: "asc" },
@@ -263,16 +277,6 @@ export default async function DashboardPage({
       orderBy: { createdAt: "asc" },
     }),
     prisma.profile.findUnique({ where: { userId } }),
-    prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        email: true,
-        subscriptionStatus: true,
-        stripeCustomerId: true,
-        subscriptionEndsAt: true,
-        stripeSubscriptionId: true,
-      },
-    }),
   ])
 
   // Subscription gating: redirect to paywall if not an active subscriber

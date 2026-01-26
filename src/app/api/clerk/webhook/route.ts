@@ -59,6 +59,30 @@ export async function POST(req: Request) {
     )
   }
 
+  // Handle user creation
+  if (event.type === "user.created") {
+    const userId = event.data.id
+    const email = event.data.email_addresses?.[0]?.email_address ?? null
+
+    try {
+      await prisma.user.upsert({
+        where: { id: userId },
+        update: { email },
+        create: {
+          id: userId,
+          email,
+        },
+      })
+      console.log(`Created user ${userId}`)
+    } catch (error) {
+      console.error(`Error creating user ${userId}:`, error)
+      return NextResponse.json(
+        { error: "Failed to create user" },
+        { status: 500 }
+      )
+    }
+  }
+
   // Handle user deletion
   if (event.type === "user.deleted") {
     const userId = event.data.id

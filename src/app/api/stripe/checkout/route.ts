@@ -11,16 +11,18 @@ export async function POST() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const user = await currentUser()
-    const email = user?.emailAddresses?.[0]?.emailAddress
+    const clerkUser = await currentUser()
+    const email = clerkUser?.emailAddresses?.[0]?.emailAddress
 
-    // Get or create Stripe customer with race condition protection
-    const dbUser = await prisma.user.findUnique({
+    // Ensure user exists in database (handles race condition if webhook hasn't fired yet)
+    const dbUser = await prisma.user.upsert({
       where: { id: userId },
+      update: { email: email ?? undefined },
+      create: { id: userId, email: email ?? undefined },
       select: { stripeCustomerId: true },
     })
 
-    let customerId = dbUser?.stripeCustomerId
+    let customerId = dbUser.stripeCustomerId
 
     if (!customerId) {
       // Create Stripe customer
@@ -30,31 +32,11 @@ export async function POST() {
       })
       customerId = customer.id
 
-      // Use conditional update to prevent race condition:
-      // Only update if stripeCustomerId is still null (no other request beat us)
-      const updateResult = await prisma.user.updateMany({
-        where: { id: userId, stripeCustomerId: null },
-        data: { stripeCustomerId: customerId, email },
+      // Update user with Stripe customer ID
+      await prisma.user.update({
+        where: { id: userId },
+        data: { stripeCustomerId: customerId },
       })
-
-      // If no rows updated, another request already set stripeCustomerId
-      // Refetch to get the existing customer ID
-      if (updateResult.count === 0) {
-        const existingUser = await prisma.user.findUnique({
-          where: { id: userId },
-          select: { stripeCustomerId: true },
-        })
-        if (existingUser?.stripeCustomerId) {
-          customerId = existingUser.stripeCustomerId
-          // Note: We created an orphaned Stripe customer (customer.id)
-          // This is rare and acceptable for MVP. Could add cleanup later.
-        } else {
-          // User doesn't exist yet, create them
-          await prisma.user.create({
-            data: { id: userId, stripeCustomerId: customerId, email },
-          })
-        }
-      }
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"

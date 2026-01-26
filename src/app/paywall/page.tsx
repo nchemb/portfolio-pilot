@@ -7,8 +7,11 @@ export default async function PaywallPage() {
   const { userId } = await auth()
 
   if (userId) {
-    const user = await prisma.user.findUnique({
+    // Ensure user record exists (handles race condition if webhook hasn't fired yet)
+    const user = await prisma.user.upsert({
       where: { id: userId },
+      update: {},
+      create: { id: userId },
       select: { subscriptionStatus: true },
     })
 
