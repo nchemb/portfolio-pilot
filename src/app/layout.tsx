@@ -25,6 +25,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'Portfolio Flow',
   description: 'Track your portfolio with AI-powered insights grounded in real data.',
+  icons: {
+    icon: '/icon.png',
+    apple: '/icon.png',
+  },
   openGraph: {
     title: 'Portfolio Flow',
     description: 'Track your portfolio with AI-powered insights grounded in real data.',
