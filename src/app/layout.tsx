@@ -53,7 +53,16 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <ClerkProvider>
+    <ClerkProvider
+      appearance={{
+        elements: {
+          headerTitle: { display: 'none' },
+          headerSubtitle: { display: 'none' },
+          logoBox: { display: 'none' },
+          logoImage: { display: 'none' },
+        },
+      }}
+    >
       <html lang="en">
         <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
           <ToastProvider>
@@ -89,7 +98,7 @@ export default function RootLayout({
                     Log in
                   </Link>
                   <Button asChild>
-                    <Link href="/signup">Start free</Link>
+                    <Link href="/signup">Get Started</Link>
                   </Button>
                 </SignedOut>
                 <SignedIn>

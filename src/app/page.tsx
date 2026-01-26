@@ -35,18 +35,11 @@ export default async function Home() {
               </p>
             </div>
 
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+            <div>
               <Button size="lg" asChild>
-                <Link href="/signup">Start free</Link>
-              </Button>
-              <Button size="lg" variant="outline" asChild>
-                <Link href="#pricing">See demo</Link>
+                <Link href="/signup">Get Started</Link>
               </Button>
             </div>
-
-            <p className="text-sm text-muted-foreground">
-              Read-only &middot; We never move money &middot; Delete your data anytime
-            </p>
           </div>
 
           {/* Right: Dashboard Screenshot Placeholder */}
@@ -61,13 +54,13 @@ export default async function Home() {
                 </div>
                 <div className="flex-1 text-center">
                   <div className="inline-block bg-muted rounded px-3 py-1 text-xs text-muted-foreground">
-                    app.portfolioflow.com/dashboard
+                    portfolioflow.ai/dashboard
                   </div>
                 </div>
               </div>
               <div className="p-6 space-y-4">
                 {/* Stats Row */}
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="rounded-lg border bg-background p-4">
                     <div className="text-xs text-muted-foreground">Total Value</div>
                     <div className="text-lg font-semibold mt-1">$127,432</div>
@@ -76,50 +69,57 @@ export default async function Home() {
                     <div className="text-xs text-muted-foreground">Daily Change</div>
                     <div className="text-lg font-semibold text-primary mt-1">+$1,247</div>
                   </div>
-                  <div className="rounded-lg border bg-background p-4">
-                    <div className="text-xs text-muted-foreground">Accounts</div>
-                    <div className="text-lg font-semibold mt-1">4</div>
+                </div>
+                {/* AI Chat Box */}
+                <div className="rounded-lg border bg-background p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <SparklesIcon className="h-4 w-4" />
+                    Portfolio Copilot
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-end">
+                      <div className="rounded-lg bg-foreground text-background px-3 py-2 text-xs max-w-[80%]">
+                        What&apos;s my international exposure?
+                      </div>
+                    </div>
+                    <div className="flex justify-start">
+                      <div className="rounded-lg bg-muted px-3 py-2 text-xs max-w-[80%]">
+                        You have 20% in international equities, mostly through VEA and VXUS.
+                      </div>
+                    </div>
                   </div>
                 </div>
                 {/* Allocation Skeleton */}
                 <div className="rounded-lg border bg-background p-4 space-y-3">
                   <div className="text-sm font-medium">Allocation</div>
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">US Equity</span>
-                      <div className="flex items-center gap-2">
-                        <div className="w-24 h-2 rounded-full bg-muted overflow-hidden">
-                          <div className="h-full w-3/5 bg-foreground rounded-full" />
-                        </div>
-                        <span className="text-xs font-medium">60%</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-muted-foreground w-16 shrink-0">US Equity</span>
+                      <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                        <div className="h-full w-[60%] bg-foreground rounded-full" />
                       </div>
+                      <span className="text-xs font-medium w-8 text-right">60%</span>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Int&apos;l Equity</span>
-                      <div className="flex items-center gap-2">
-                        <div className="w-24 h-2 rounded-full bg-muted overflow-hidden">
-                          <div className="h-full w-1/5 bg-foreground/70 rounded-full" />
-                        </div>
-                        <span className="text-xs font-medium">20%</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-muted-foreground w-16 shrink-0">Int&apos;l Equity</span>
+                      <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                        <div className="h-full w-[20%] bg-foreground/70 rounded-full" />
                       </div>
+                      <span className="text-xs font-medium w-8 text-right">20%</span>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Bonds</span>
-                      <div className="flex items-center gap-2">
-                        <div className="w-24 h-2 rounded-full bg-muted overflow-hidden">
-                          <div className="h-full w-[15%] bg-foreground/50 rounded-full" />
-                        </div>
-                        <span className="text-xs font-medium">15%</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-muted-foreground w-16 shrink-0">Bonds</span>
+                      <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                        <div className="h-full w-[15%] bg-foreground/50 rounded-full" />
                       </div>
+                      <span className="text-xs font-medium w-8 text-right">15%</span>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Cash</span>
-                      <div className="flex items-center gap-2">
-                        <div className="w-24 h-2 rounded-full bg-muted overflow-hidden">
-                          <div className="h-full w-[5%] bg-foreground/30 rounded-full" />
-                        </div>
-                        <span className="text-xs font-medium">5%</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-muted-foreground w-16 shrink-0">Cash</span>
+                      <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                        <div className="h-full w-[5%] bg-foreground/30 rounded-full" />
                       </div>
+                      <span className="text-xs font-medium w-8 text-right">5%</span>
                     </div>
                   </div>
                 </div>
@@ -360,16 +360,11 @@ export default async function Home() {
                   </li>
                 </ul>
                 <Button className="w-full" size="lg" asChild>
-                  <Link href="/signup">Start free</Link>
+                  <Link href="/signup">Get Started</Link>
                 </Button>
-                <div className="text-center space-y-1">
-                  <p className="text-xs text-muted-foreground">
-                    Cancel anytime. No trading permissions.
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Read-only &middot; We never move money &middot; Delete your data anytime
-                  </p>
-                </div>
+                <p className="text-xs text-muted-foreground text-center">
+                  Cancel anytime
+                </p>
               </CardContent>
             </Card>
           </div>
@@ -424,17 +419,9 @@ export default async function Home() {
           <p className="text-muted-foreground mb-8 max-w-xl mx-auto">
             Connect your accounts and get clarity on what you actually own.
           </p>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center justify-center">
-            <Button size="lg" asChild>
-              <Link href="/signup">Start free</Link>
-            </Button>
-            <Button size="lg" variant="outline" asChild>
-              <Link href="#pricing">See demo</Link>
-            </Button>
-          </div>
-          <p className="text-sm text-muted-foreground mt-6">
-            Read-only &middot; We never move money &middot; Delete your data anytime
-          </p>
+          <Button size="lg" asChild>
+            <Link href="/signup">Get Started</Link>
+          </Button>
         </div>
       </section>
 

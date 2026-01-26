@@ -581,7 +581,7 @@ export default async function DashboardPage({
           )}
         </div>
 
-        <Tabs defaultValue={activeTab} className="w-full">
+        <Tabs defaultValue={activeTab} key={activeTab} className="w-full">
           <TabsList className="w-full justify-start">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="brokerage">Brokerage</TabsTrigger>
