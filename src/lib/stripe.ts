@@ -27,4 +27,4 @@ export const stripe = {
 }
 
 export const PRICE_ID = process.env.STRIPE_PRICE_ID ?? ""
-export const MONTHLY_PRICE = 9 // $9/month - displayed on landing page
+export const MONTHLY_PRICE = 19 // $19/month - displayed on landing page

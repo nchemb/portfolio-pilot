@@ -10,7 +10,8 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion"
 
-const MONTHLY_PRICE = 9
+const MONTHLY_PRICE = 19
+const IS_FREE_ACCESS = true // Toggle this when re-enabling payments
 
 export default async function Home() {
   const { userId } = await auth()
@@ -26,6 +27,17 @@ export default async function Home() {
         <div className="grid gap-12 lg:grid-cols-2 lg:gap-16 items-center">
           {/* Left: Copy */}
           <div className="space-y-8">
+            {IS_FREE_ACCESS && (
+              <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-4 py-1.5">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
+                  Free during early access
+                </span>
+              </div>
+            )}
             <div className="space-y-4">
               <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
                 Finally see your full allocation.
@@ -35,10 +47,15 @@ export default async function Home() {
               </p>
             </div>
 
-            <div>
+            <div className="space-y-3">
               <Button size="lg" asChild>
-                <Link href="/signup">Get Started</Link>
+                <Link href="/signup">{IS_FREE_ACCESS ? "Start Free" : "Get Started"}</Link>
               </Button>
+              {IS_FREE_ACCESS && (
+                <p className="text-sm text-muted-foreground">
+                  No credit card required. Free while we&apos;re in early access.
+                </p>
+              )}
             </div>
           </div>
 
@@ -320,20 +337,40 @@ export default async function Home() {
         <div className="mx-auto max-w-6xl px-6">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-              Simple pricing
+              {IS_FREE_ACCESS ? "Free during early access" : "Simple pricing"}
             </h2>
             <p className="mt-4 text-lg text-muted-foreground">
-              One plan. No tiers. No upsells.
+              {IS_FREE_ACCESS
+                ? "Get full access while we build. Pricing starts later."
+                : "One plan. No tiers. No upsells."}
             </p>
           </div>
 
           <div className="mx-auto max-w-md">
-            <Card className="border-2 border-foreground/10">
+            <Card className={`border-2 ${IS_FREE_ACCESS ? "border-emerald-500/30 relative overflow-hidden" : "border-foreground/10"}`}>
+              {IS_FREE_ACCESS && (
+                <div className="absolute top-0 right-0 bg-emerald-500 text-white text-xs font-medium px-3 py-1 rounded-bl-lg">
+                  Limited time
+                </div>
+              )}
               <CardHeader className="text-center pb-8 pt-8">
-                <CardTitle className="text-2xl">Pro</CardTitle>
+                <CardTitle className="text-2xl">{IS_FREE_ACCESS ? "Early Access" : "Pro"}</CardTitle>
                 <div className="mt-4">
-                  <span className="text-5xl font-bold">${MONTHLY_PRICE}</span>
-                  <span className="text-muted-foreground">/month</span>
+                  {IS_FREE_ACCESS ? (
+                    <>
+                      <span className="text-5xl font-bold">$0</span>
+                      <span className="text-muted-foreground">/month</span>
+                      <div className="mt-2 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                        <span className="line-through">${MONTHLY_PRICE}/mo</span>
+                        <span className="text-emerald-600 dark:text-emerald-400 font-medium">Free for now</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-5xl font-bold">${MONTHLY_PRICE}</span>
+                      <span className="text-muted-foreground">/month</span>
+                    </>
+                  )}
                 </div>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -360,10 +397,12 @@ export default async function Home() {
                   </li>
                 </ul>
                 <Button className="w-full" size="lg" asChild>
-                  <Link href="/signup">Get Started</Link>
+                  <Link href="/signup">{IS_FREE_ACCESS ? "Start Free" : "Get Started"}</Link>
                 </Button>
                 <p className="text-xs text-muted-foreground text-center">
-                  Cancel anytime
+                  {IS_FREE_ACCESS
+                    ? "No credit card required"
+                    : "Cancel anytime"}
                 </p>
               </CardContent>
             </Card>
@@ -394,9 +433,11 @@ export default async function Home() {
                 </AccordionContent>
               </AccordionItem>
               <AccordionItem value="item-4">
-                <AccordionTrigger>Is there a free trial?</AccordionTrigger>
+                <AccordionTrigger>{IS_FREE_ACCESS ? "Why is it free?" : "Is there a free trial?"}</AccordionTrigger>
                 <AccordionContent>
-                  Yes. You can try the full product before being charged. Cancel anytime if it&apos;s not for you.
+                  {IS_FREE_ACCESS
+                    ? "We're in early access and want to get feedback from real users. It's completely free while we build and improve the product. We'll introduce pricing later, and early users will get the best deal."
+                    : "Yes. You can try the full product before being charged. Cancel anytime if it's not for you."}
                 </AccordionContent>
               </AccordionItem>
               <AccordionItem value="item-5">
@@ -413,14 +454,26 @@ export default async function Home() {
       {/* Final CTA */}
       <section className="py-16 sm:py-20">
         <div className="mx-auto max-w-6xl px-6 text-center">
+          {IS_FREE_ACCESS && (
+            <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-4 py-1.5 mb-6">
+              <ClockIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+              <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
+                Free access won&apos;t last forever
+              </span>
+            </div>
+          )}
           <h2 className="text-2xl font-bold tracking-tight sm:text-3xl mb-4">
-            See your full allocation in one place.
+            {IS_FREE_ACCESS
+              ? "Try it now while it's free."
+              : "See your full allocation in one place."}
           </h2>
           <p className="text-muted-foreground mb-8 max-w-xl mx-auto">
-            Connect your accounts and get clarity on what you actually own.
+            {IS_FREE_ACCESS
+              ? "Join early access and get full features at no cost. We'll notify you before any pricing changes."
+              : "Connect your accounts and get clarity on what you actually own."}
           </p>
           <Button size="lg" asChild>
-            <Link href="/signup">Get Started</Link>
+            <Link href="/signup">{IS_FREE_ACCESS ? "Start Free" : "Get Started"}</Link>
           </Button>
         </div>
       </section>
@@ -637,6 +690,25 @@ function MailIcon({ className }: { className?: string }) {
         strokeLinecap="round"
         strokeLinejoin="round"
         d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"
+      />
+    </svg>
+  )
+}
+
+function ClockIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"
       />
     </svg>
   )
