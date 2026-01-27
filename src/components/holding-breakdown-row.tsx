@@ -171,7 +171,7 @@ export function HoldingBreakdownRow({
         </TableCell>
         <TableCell className="text-right tabular-nums">
           {holding.totalQuantity.toLocaleString("en-US", {
-            maximumFractionDigits: 6,
+            maximumFractionDigits: 2,
           })}
         </TableCell>
         <TableCell className="text-right tabular-nums">
@@ -290,7 +290,7 @@ export function HoldingBreakdownRow({
                       <TableCell>{entry.accountLabel}</TableCell>
                       <TableCell className="text-right tabular-nums">
                         {entry.quantity.toLocaleString("en-US", {
-                          maximumFractionDigits: 6,
+                          maximumFractionDigits: 2,
                         })}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
