@@ -10,6 +10,7 @@ import {
 import { Geist, Geist_Mono } from 'next/font/google'
 import { ToastProvider } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
+import { PostHogIdentify } from '@/components/posthog-identity'
 import './globals.css'
 
 const geistSans = Geist({
@@ -65,6 +66,7 @@ export default function RootLayout({
     >
       <html lang="en">
         <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+          <PostHogIdentify />
           <ToastProvider>
             <header className="sticky top-0 z-50 flex justify-between items-center px-6 h-16 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
               <SignedOut>

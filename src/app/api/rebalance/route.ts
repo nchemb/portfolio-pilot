@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@clerk/nextjs/server"
 
 import { buildMonthlyRebalancePlan, type RebalancerInput } from "@/lib/rebalancer"
+import { getPostHogClient } from "@/lib/posthog-server"
 
 /**
  * POST /api/rebalance
@@ -70,6 +71,20 @@ export async function POST(request: Request) {
     }
 
     const plan = await buildMonthlyRebalancePlan(userId, input)
+
+    // Track rebalance plan generation with PostHog
+    const posthog = getPostHogClient()
+    posthog.capture({
+      distinctId: userId,
+      event: "rebalance_plan_generated",
+      properties: {
+        mode,
+        monthly_contribution: monthlyContribution ?? null,
+        max_invest_amount: maxInvestAmount ?? null,
+        suggestions_count: plan.suggestions?.length ?? 0,
+        invest_amount: plan.investAmount ?? 0,
+      },
+    })
 
     return NextResponse.json(plan)
   } catch (error) {

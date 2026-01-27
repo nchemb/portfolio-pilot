@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
+import posthog from "posthog-js"
 
 import { Button } from "@/components/ui/button"
 
@@ -112,9 +113,22 @@ export function PlaidLinkButton() {
 
           if (!response.ok) {
             const payload = await response.json().catch(() => null)
-            setError(payload?.error ?? "Unable to sync brokerage.")
+            const errorMessage = payload?.error ?? "Unable to sync brokerage."
+            setError(errorMessage)
+            posthog.capture("brokerage_connection_failed", {
+              error: errorMessage,
+              error_code: payload?.code ?? null,
+              institution_name: metadata.institution?.name ?? null,
+            })
             return
           }
+
+          // Track successful brokerage connection
+          posthog.capture("brokerage_connected", {
+            institution_name: metadata.institution?.name ?? null,
+            institution_id: metadata.institution?.institution_id ?? null,
+            accounts_count: metadata.accounts?.length ?? 0,
+          })
 
           // Success! Reset the force refresh flag
           setShouldForceRefresh(false)

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
+import posthog from "posthog-js"
 
 import { Button } from "@/components/ui/button"
 
@@ -115,6 +116,13 @@ export function PlaidLinkCashButton() {
             setError(payload?.error ?? "Unable to link cash account.")
             return
           }
+
+          // Track successful cash account connection
+          posthog.capture("cash_account_connected", {
+            institution_name: metadata.institution?.name ?? null,
+            institution_id: metadata.institution?.institution_id ?? null,
+            accounts_count: metadata.accounts?.length ?? 0,
+          })
 
           setShouldForceRefresh(false)
           router.refresh()

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import posthog from "posthog-js"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -33,12 +34,14 @@ interface BillingSectionProps {
   subscriptionStatus: SubscriptionStatus
   subscriptionEndsAt: Date | null
   hasStripeCustomer: boolean
+  paymentsEnabled?: boolean
 }
 
 export function BillingSection({
   subscriptionStatus,
   subscriptionEndsAt,
   hasStripeCustomer,
+  paymentsEnabled = true,
 }: BillingSectionProps) {
   const [portalLoading, setPortalLoading] = useState(false)
   const [cancelLoading, setCancelLoading] = useState(false)
@@ -76,11 +79,18 @@ export function BillingSection({
         throw new Error(data.error || "Failed to cancel subscription")
       }
 
+      // Track subscription cancellation
+      posthog.capture("subscription_canceled", {
+        cancel_at: data.cancelAt ?? null,
+        previous_status: localStatus,
+      })
+
       setLocalStatus("canceling")
       if (data.cancelAt) {
         setLocalEndsAt(new Date(data.cancelAt))
       }
     } catch (error) {
+      posthog.captureException(error)
       console.error("Error canceling subscription:", error)
     } finally {
       setCancelLoading(false)
@@ -96,7 +106,8 @@ export function BillingSection({
     }).format(new Date(date))
   }
 
-  if (!hasStripeCustomer) {
+  // Hide billing section when payments are disabled or no Stripe customer exists
+  if (!paymentsEnabled || !hasStripeCustomer) {
     return null
   }
 

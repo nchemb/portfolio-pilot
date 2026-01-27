@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from "next/server"
 import Stripe from "stripe"
 import { stripe } from "@/lib/stripe"
 import { prisma } from "@/lib/prisma"
+import { getPostHogClient } from "@/lib/posthog-server"
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!
 
@@ -48,6 +49,24 @@ export async function POST(request: NextRequest) {
               subscriptionEndsAt: new Date(subscription.current_period_end * 1000),
             },
           })
+
+          // Track successful subscription checkout with PostHog
+          const user = await prisma.user.findFirst({
+            where: { stripeCustomerId: customerId },
+            select: { id: true },
+          })
+          if (user) {
+            const posthog = getPostHogClient()
+            posthog.capture({
+              distinctId: user.id,
+              event: "subscription_checkout_completed",
+              properties: {
+                subscription_id: subscriptionId,
+                subscription_status: subscription.status,
+                customer_id: customerId,
+              },
+            })
+          }
         }
         break
       }
@@ -77,6 +96,23 @@ export async function POST(request: NextRequest) {
             stripeSubscriptionId: null,
           },
         })
+
+        // Track subscription deleted with PostHog
+        const userDeleted = await prisma.user.findFirst({
+          where: { stripeCustomerId: customerId },
+          select: { id: true },
+        })
+        if (userDeleted) {
+          const posthog = getPostHogClient()
+          posthog.capture({
+            distinctId: userDeleted.id,
+            event: "subscription_deleted",
+            properties: {
+              subscription_id: subscription.id,
+              customer_id: customerId,
+            },
+          })
+        }
         break
       }
 
@@ -90,6 +126,24 @@ export async function POST(request: NextRequest) {
             subscriptionStatus: "past_due",
           },
         })
+
+        // Track payment failure with PostHog
+        const userPaymentFailed = await prisma.user.findFirst({
+          where: { stripeCustomerId: customerId },
+          select: { id: true },
+        })
+        if (userPaymentFailed) {
+          const posthog = getPostHogClient()
+          posthog.capture({
+            distinctId: userPaymentFailed.id,
+            event: "payment_failed",
+            properties: {
+              invoice_id: invoice.id,
+              customer_id: customerId,
+              amount_due: invoice.amount_due,
+            },
+          })
+        }
         break
       }
     }

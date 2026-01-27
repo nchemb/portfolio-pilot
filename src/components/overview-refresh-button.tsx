@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Check, Loader2, RefreshCw } from "lucide-react"
+import posthog from "posthog-js"
 
 import { Button } from "@/components/ui/button"
 
@@ -24,6 +25,9 @@ export function OverviewRefreshButton() {
     if (state === "loading") return
     setState("loading")
     setMessage(null)
+
+    // Track portfolio refresh action
+    posthog.capture("portfolio_refreshed")
 
     try {
       const response = await fetch("/api/refresh-dashboard", { method: "POST" })

@@ -4,6 +4,12 @@ import { prisma } from "@/lib/prisma"
 import { PaywallContent } from "./paywall-content"
 
 export default async function PaywallPage() {
+  // If payments are disabled, redirect to dashboard (free access for all)
+  const paymentsEnabled = process.env.PAYMENTS_ENABLED === "true"
+  if (!paymentsEnabled) {
+    redirect("/dashboard")
+  }
+
   const { userId } = await auth()
 
   if (userId) {

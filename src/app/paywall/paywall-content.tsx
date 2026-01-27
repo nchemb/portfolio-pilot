@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import posthog from "posthog-js"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -21,6 +22,12 @@ export function PaywallContent() {
     setLoading(true)
     setError(null)
 
+    // Track subscription checkout started
+    posthog.capture("subscription_checkout_started", {
+      price: MONTHLY_PRICE,
+      currency: "USD",
+    })
+
     try {
       const response = await fetch("/api/stripe/checkout", {
         method: "POST",
@@ -34,7 +41,8 @@ export function PaywallContent() {
       if (url) {
         window.location.href = url
       }
-    } catch {
+    } catch (err) {
+      posthog.captureException(err)
       setError("Something went wrong. Please try again.")
     } finally {
       setLoading(false)

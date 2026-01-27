@@ -61,6 +61,7 @@ import {
   getEffectiveClassification,
   type ClassificationMaps,
 } from "@/lib/classification"
+import { getPostHogClient } from "@/lib/posthog-server"
 
 export const dynamic = "force-dynamic"
 
@@ -219,6 +220,18 @@ async function updateProfile(formData: FormData) {
     },
   })
 
+  // Track profile settings update with PostHog
+  const posthog = getPostHogClient()
+  posthog.capture({
+    distinctId: userId,
+    event: "profile_settings_updated",
+    properties: {
+      age_range: nextAgeRange,
+      risk_tolerance: nextRisk,
+      time_horizon: nextHorizon,
+    },
+  })
+
   revalidatePath("/dashboard")
   redirect("/dashboard?saved=1&tab=settings")
 }
@@ -279,6 +292,9 @@ export default async function DashboardPage({
     prisma.profile.findUnique({ where: { userId } }),
   ])
 
+  // Payment feature flag - when disabled, all users get free access
+  const paymentsEnabled = process.env.PAYMENTS_ENABLED === "true"
+
   // Subscription gating: redirect to paywall if not an active subscriber
   // "canceling" means user canceled but still has access until period ends
   let isSubscribed =
@@ -288,7 +304,7 @@ export default async function DashboardPage({
 
   // Handle race condition: if coming from checkout success but webhook hasn't updated yet,
   // verify subscription directly with Stripe
-  if (!isSubscribed && checkoutStatus === "success" && user?.stripeCustomerId) {
+  if (paymentsEnabled && !isSubscribed && checkoutStatus === "success" && user?.stripeCustomerId) {
     try {
       const stripe = getStripe()
       const subscriptions = await stripe.subscriptions.list({
@@ -315,7 +331,8 @@ export default async function DashboardPage({
     }
   }
 
-  if (!isSubscribed && process.env.STRIPE_PRICE_ID) {
+  // Only enforce paywall if payments are enabled
+  if (paymentsEnabled && !isSubscribed && process.env.STRIPE_PRICE_ID) {
     redirect("/paywall")
   }
 
@@ -1084,6 +1101,7 @@ export default async function DashboardPage({
               }
               subscriptionEndsAt={user?.subscriptionEndsAt ?? null}
               hasStripeCustomer={!!user?.stripeCustomerId}
+              paymentsEnabled={paymentsEnabled}
             />
 
             <DeleteAccountSection

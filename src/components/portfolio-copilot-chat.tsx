@@ -9,6 +9,7 @@
 import { useState, useRef, useEffect } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
+import posthog from "posthog-js"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -123,7 +124,14 @@ export function PortfolioCopilotChat() {
       const data = await response.json()
       setSavedContribution(data.monthlyContributionDollars)
       setMonthlyContribution("")
+
+      // Track monthly contribution saved
+      posthog.capture("monthly_contribution_saved", {
+        amount: data.monthlyContributionDollars,
+        currency: "USD",
+      })
     } catch (err) {
+      posthog.captureException(err)
       setError(err instanceof Error ? err.message : "Failed to save contribution")
     } finally {
       setSavingContribution(false)
@@ -138,6 +146,12 @@ export function PortfolioCopilotChat() {
     setInputValue("")
     setIsLoading(true)
     setError(null)
+
+    // Track chat message sent
+    posthog.capture("portfolio_chat_message_sent", {
+      message_length: content.length,
+      message_count: messages.length + 1,
+    })
 
     try {
       const response = await fetch("/api/chat", {
@@ -167,6 +181,7 @@ export function PortfolioCopilotChat() {
 
       setMessages((prev) => [...prev, assistantMessage])
     } catch (err) {
+      posthog.captureException(err)
       setError(err instanceof Error ? err.message : "An error occurred")
     } finally {
       setIsLoading(false)

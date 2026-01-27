@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import posthog from "posthog-js"
 import { Button } from "@/components/ui/button"
 import {
   AlertDialog,
@@ -45,10 +46,17 @@ export function DeleteBrokerageButton({
         throw new Error(data.error || "Failed to delete brokerage")
       }
 
+      // Track brokerage deletion
+      posthog.capture("brokerage_deleted", {
+        institution_name: institutionName ?? null,
+        account_name: accountName ?? null,
+      })
+
       // Close dialog and refresh the page
       setOpen(false)
       router.refresh()
     } catch (err) {
+      posthog.captureException(err)
       setError(err instanceof Error ? err.message : "Failed to delete brokerage")
       setIsDeleting(false)
     }
