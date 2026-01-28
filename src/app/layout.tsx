@@ -92,6 +92,12 @@ export default function RootLayout({
                 </Link>
               </SignedIn>
               <div className="flex items-center gap-4">
+                <Link
+                  href="/blog"
+                  className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Blog
+                </Link>
                 <SignedOut>
                   <Link
                     href="/login"

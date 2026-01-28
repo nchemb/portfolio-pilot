@@ -486,6 +486,9 @@ export default async function Home() {
               &copy; {new Date().getFullYear()} Portfolio Flow. All rights reserved.
             </div>
             <div className="flex flex-wrap justify-center gap-6 text-sm">
+              <Link href="/blog" className="text-muted-foreground hover:text-foreground transition-colors">
+                Blog
+              </Link>
               <Link href="/privacy" className="text-muted-foreground hover:text-foreground transition-colors">
                 Privacy
               </Link>
