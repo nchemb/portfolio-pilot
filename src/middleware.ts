@@ -6,12 +6,13 @@ const isProtectedRoute = createRouteMatcher([
   "/api/((?!clerk|stripe|cron|health).*)", // All API routes except webhooks, cron, and health
 ])
 
-// Public API routes (webhooks, cron jobs, health checks)
+// Public API routes (webhooks, cron jobs, health checks, blog generation)
 const isPublicApiRoute = createRouteMatcher([
   "/api/clerk/webhook",
   "/api/stripe/webhook",
   "/api/cron/(.*)",
   "/api/health",
+  "/api/blog/(.*)", // Blog generation uses its own bearer token auth
 ])
 
 export default clerkMiddleware(async (auth, req) => {

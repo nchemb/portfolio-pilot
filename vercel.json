@@ -3,6 +3,14 @@
     {
       "path": "/api/cron/daily-snapshot",
       "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/api/cron/generate-content",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/post-twitter",
+      "schedule": "0 8,13,19 * * *"
     }
   ]
 }

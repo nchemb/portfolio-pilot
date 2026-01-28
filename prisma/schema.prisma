@@ -20,6 +20,9 @@ model User {
   subscriptionStatus   String?   // active|past_due|canceled|trialing|none
   subscriptionEndsAt   DateTime?
 
+  // Referral system
+  referralCode String? @unique // User's unique referral code for sharing
+
   profile           Profile?
   accounts          BrokerageAccount[]
   cashAccounts      CashAccount[]
@@ -28,6 +31,8 @@ model User {
   syncState         SyncState?
   userDailySnapshots UserDailySnapshot[]
   aiUsageDaily      AiUsageDaily[]
+  referralsMade     Referral[] @relation("ReferrerToReferrals")
+  referredBy        Referral?  @relation("RefereeToReferral")
 }
 
 model Profile {
@@ -379,4 +384,198 @@ model AiUsageDaily {
   @@unique([userId, date])
   @@index([userId])
   @@index([date])
+}
+
+// ===== DISTRIBUTION SYSTEM =====
+
+/// Queued content items for automated distribution.
+/// AI generates content → pending → you approve → approved → cron posts → published
+model ContentItem {
+  id String @id @default(cuid())
+
+  // Content metadata
+  type    String  // "tweet" | "thread" | "blog_post" | "email"
+  topic   String  // Topic/angle this content addresses
+  title   String? // For blog posts
+  content String  @db.Text // The actual content (JSON for tweets, markdown for blogs)
+
+  // Generation metadata
+  generatedBy String? // Model used (gpt-4o, etc.)
+  prompt      String? @db.Text // The prompt used (for debugging/refinement)
+
+  // Publishing workflow: pending → approved → published (or failed)
+  status       String    @default("pending") // pending|approved|published|failed|rejected
+  scheduledFor DateTime? // Optional: schedule for future posting
+  approvedAt   DateTime? // When approved in admin dashboard
+  publishedAt  DateTime? // When actually posted
+  publishedId  String?   // External ID (tweet ID, etc.)
+
+  // Performance tracking (populated after publishing)
+  impressions Int?
+  engagements Int?
+  clicks      Int?
+
+  // Error tracking
+  error String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([type])
+  @@index([scheduledFor])
+  @@index([createdAt])
+}
+
+/// Content topics for AI generation rotation.
+/// Tracks usage to ensure variety and prevent repetition.
+model ContentTopic {
+  id String @id @default(cuid())
+
+  // Categorization
+  category String // "pain_point" | "education" | "product" | "engagement"
+  topic    String // The specific topic/angle
+  angle    String? // Optional specific angle to take
+  keywords String[] // Associated keywords for SEO/hashtags
+
+  // Topic rotation tracking
+  lastUsed DateTime?
+  useCount Int       @default(0)
+
+  // Status
+  active Boolean @default(true) // Can be disabled without deleting
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+  @@index([lastUsed])
+  @@index([active])
+}
+
+/// Distribution channel configurations.
+/// Stores credentials, rate limits, and posting state per channel.
+model DistributionChannel {
+  id String @id @default(cuid())
+
+  name    String  @unique // "twitter" | "email" | "blog"
+  enabled Boolean @default(false)
+
+  // Channel-specific configuration (API keys stored in env, this is for settings)
+  config Json? // e.g., { "accountHandle": "@portfolioflow", "defaultHashtags": [...] }
+
+  // Rate limiting
+  postsPerDay    Int       @default(3)
+  lastPostedAt   DateTime?
+  dailyPostCount Int       @default(0)
+  dailyResetAt   DateTime? // When daily count was last reset
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Referral tracking for viral growth.
+/// Each user can have one referral code; tracks who they referred.
+model Referral {
+  id String @id @default(cuid())
+
+  // The user who shared their referral code
+  referrerId String
+
+  // The user who signed up using the code (null until they convert)
+  refereeId String? @unique
+
+  // The referral code used
+  code String @unique
+
+  // Status tracking
+  status String @default("pending") // pending|converted|expired|rewarded
+
+  // Reward tracking
+  referrerReward   String?   // e.g., "1_month_free"
+  refereeReward    String?   // e.g., "extended_trial"
+  rewardGrantedAt  DateTime?
+
+  // Attribution
+  signupSource String? // Where the referral link was shared (twitter, email, etc.)
+
+  createdAt   DateTime  @default(now())
+  convertedAt DateTime? // When the referee became a paying user
+
+  // Relations
+  referrer User  @relation("ReferrerToReferrals", fields: [referrerId], references: [id], onDelete: Cascade)
+  referee  User? @relation("RefereeToReferral", fields: [refereeId], references: [id], onDelete: SetNull)
+
+  @@index([referrerId])
+  @@index([code])
+  @@index([status])
+}
+
+// ===== SEO/GEO BLOGGING SYSTEM =====
+
+/// Blog topics for SEO-optimized content generation.
+/// Tracks keyword targeting, geo focus, and usage rotation.
+model BlogTopic {
+  id String @id @default(cuid())
+
+  // SEO targeting
+  primaryKeyword    String   // Main keyword to target
+  secondaryKeywords String[] // Long-tail variations
+  geoKeywords       String[] // ["US investors", "UK ISA", "Australian super"]
+
+  // Content structure
+  category String  // "pain_point" | "education" | "comparison" | "guide"
+  title    String  // Suggested title template
+  outline  String? @db.Text // Optional content outline
+
+  // Rotation tracking (LRU - least recently used first)
+  lastUsed DateTime?
+  useCount Int       @default(0)
+  active   Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  blogPosts BlogPost[]
+
+  @@index([category])
+  @@index([lastUsed])
+  @@index([active])
+}
+
+/// Generated blog posts for SEO/GEO content marketing.
+/// Stores MDX content and metadata before committing to repo.
+model BlogPost {
+  id String @id @default(cuid())
+
+  // Content
+  slug        String  @unique
+  title       String
+  description String  @db.Text // Meta description (150-160 chars)
+  content     String  @db.Text // Full MDX content with frontmatter
+
+  // SEO metadata
+  primaryKeyword    String
+  secondaryKeywords String[]
+  geoTarget         String?  // "US" | "UK" | "Canada" | "Australia" | null (global)
+
+  // Generation metadata
+  topicId     String?
+  generatedBy String? // Model used (gpt-4o, etc.)
+  prompt      String? @db.Text
+
+  // Publishing workflow
+  status      String   @default("pending") // pending | published | failed
+  publishedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  topic BlogTopic? @relation(fields: [topicId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([slug])
+  @@index([publishedAt])
 }

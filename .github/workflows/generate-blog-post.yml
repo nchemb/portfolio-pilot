@@ -1,0 +1,138 @@
+name: Generate Blog Post
+
+# Runs twice a week (Monday and Thursday at 10 AM UTC)
+# Also supports manual triggers for testing
+on:
+  schedule:
+    - cron: '0 10 * * 1,4'  # Monday and Thursday at 10:00 UTC
+  workflow_dispatch:  # Allow manual triggers
+
+jobs:
+  generate-and-commit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Generate blog post via API
+        id: generate
+        run: |
+          echo "Calling blog generation API..."
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Authorization: Bearer ${{ secrets.BLOG_GENERATION_SECRET }}" \
+            -H "Content-Type: application/json" \
+            "${{ secrets.PRODUCTION_URL }}/api/blog/generate")
+
+          # Extract HTTP status code (last line)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          # Extract body (everything except last line)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          echo "HTTP Status: $HTTP_CODE"
+          echo "Response: $BODY"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "API returned non-200 status code: $HTTP_CODE"
+            echo "$BODY"
+            exit 1
+          fi
+
+          # Check for success field
+          SUCCESS=$(echo "$BODY" | jq -r '.success')
+          if [ "$SUCCESS" != "true" ]; then
+            ERROR=$(echo "$BODY" | jq -r '.error // "Unknown error"')
+            echo "Generation failed: $ERROR"
+            exit 1
+          fi
+
+          # Extract fields
+          SLUG=$(echo "$BODY" | jq -r '.slug')
+          FILENAME=$(echo "$BODY" | jq -r '.filename')
+          CONTENT=$(echo "$BODY" | jq -r '.content')
+          TITLE=$(echo "$BODY" | jq -r '.metadata.title')
+
+          echo "Generated post: $TITLE"
+          echo "Slug: $SLUG"
+          echo "Filename: $FILENAME"
+
+          # Save outputs for later steps
+          echo "slug=$SLUG" >> $GITHUB_OUTPUT
+          echo "filename=$FILENAME" >> $GITHUB_OUTPUT
+          echo "title=$TITLE" >> $GITHUB_OUTPUT
+
+          # Create content directory if it doesn't exist
+          mkdir -p src/content/blog
+
+          # Write the MDX file
+          echo "$CONTENT" > "src/content/blog/$FILENAME"
+
+          echo "MDX file written to src/content/blog/$FILENAME"
+
+      - name: Check for changes
+        id: changes
+        run: |
+          git status
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit and push
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          git add src/content/blog/
+
+          git commit -m "Add blog post: ${{ steps.generate.outputs.title }}
+
+          Auto-generated SEO-optimized blog post.
+          Slug: ${{ steps.generate.outputs.slug }}
+
+          Co-Authored-By: GitHub Actions <noreply@github.com>"
+
+          git push
+
+      - name: Mark post as published
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          echo "Marking post as published..."
+
+          RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.BLOG_GENERATION_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"slug": "${{ steps.generate.outputs.slug }}"}' \
+            "${{ secrets.PRODUCTION_URL }}/api/blog/publish")
+
+          echo "Publish response: $RESPONSE"
+
+          SUCCESS=$(echo "$RESPONSE" | jq -r '.success')
+          if [ "$SUCCESS" != "true" ]; then
+            echo "Warning: Failed to mark post as published"
+            echo "$RESPONSE"
+            # Don't fail the workflow - the post is already committed
+          else
+            echo "Post marked as published successfully"
+          fi
+
+      - name: Summary
+        run: |
+          echo "## Blog Post Generation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.changes.outputs.has_changes }}" == "true" ]; then
+            echo "**New post created:** ${{ steps.generate.outputs.title }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- **Slug:** \`${{ steps.generate.outputs.slug }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **File:** \`src/content/blog/${{ steps.generate.outputs.filename }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The post will be live after Vercel deploys the changes." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No new post was generated." >> $GITHUB_STEP_SUMMARY
+          fi
